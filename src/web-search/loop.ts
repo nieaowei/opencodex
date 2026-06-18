@@ -75,6 +75,11 @@ async function* replay(events: AdapterEvent[]): AsyncGenerator<AdapterEvent> {
   for (const e of events) yield e;
 }
 
+/** Normalize a query for failed-query de-duplication (case/whitespace-insensitive). */
+function normalizeQuery(q: string): string {
+  return q.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 function jsonError(status: number, message: string): Response {
   return new Response(JSON.stringify({ error: { message, type: "upstream_error", code: null } }), {
     status,
@@ -109,6 +114,9 @@ export async function runWithWebSearch(deps: WebSearchLoopDeps): Promise<Respons
   const toolsNoWebSearch = allTools.filter(t => !t.webSearch);
   let searchesExecuted = 0;
   let finalEvents: AdapterEvent[] = [];
+  // Queries whose search already failed this turn — repeats are short-circuited so a model that keeps
+  // re-asking the same failing query doesn't burn the whole search budget on it.
+  const failedQueries = new Set<string>();
 
   // Hard iteration bound (termination safety net); forceAnswer normally ends the loop sooner.
   const HARD_CAP = maxSearches + 2;
@@ -142,7 +150,10 @@ export async function runWithWebSearch(deps: WebSearchLoopDeps): Promise<Respons
     const now = Date.now();
     for (const call of calls) {
       let outcome: { text: string; sources: { url: string; title?: string }[]; error?: string };
-      if (searchesExecuted >= maxSearches) {
+      if (call.query && failedQueries.has(normalizeQuery(call.query))) {
+        // Already failed this turn — don't spend another real search on it.
+        outcome = { text: "", sources: [], error: "this query already failed earlier in the turn — do not call web_search again for it; answer from existing context" };
+      } else if (searchesExecuted >= maxSearches) {
         outcome = { text: "", sources: [], error: "web search limit reached for this turn — answer from results already gathered" };
       } else if (!call.query) {
         outcome = { text: "", sources: [], error: "the model called web_search with an empty query" };
@@ -150,6 +161,7 @@ export async function runWithWebSearch(deps: WebSearchLoopDeps): Promise<Respons
       } else {
         outcome = await runWebSearch(call.query, hostedTool, forwardProvider, incomingHeaders, settings);
         searchesExecuted++;
+        if (outcome.error) failedQueries.add(normalizeQuery(call.query));
       }
       messages.push({
         role: "assistant",
