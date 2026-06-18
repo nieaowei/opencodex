@@ -1,7 +1,17 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { OcxConfig } from "./types";
+
+/**
+ * Write a file atomically (temp + rename) so concurrent writers — e.g. `ocx stop` and the
+ * proxy's own shutdown handler both restoring Codex — can never leave a half-written file.
+ */
+export function atomicWriteFile(path: string, content: string): void {
+  const tmp = `${path}.ocx.tmp`;
+  writeFileSync(tmp, content, "utf-8");
+  renameSync(tmp, path);
+}
 
 const OCX_DIR = join(homedir(), ".opencodex");
 const CONFIG_PATH = join(OCX_DIR, "config.json");

@@ -1,6 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { atomicWriteFile } from "./config";
 import { resolveModelsAuthToken } from "./oauth/index";
 import type { OcxConfig, OcxProviderConfig } from "./types";
 
@@ -174,4 +175,23 @@ export async function syncCatalogModels(config: OcxConfig): Promise<{ added: num
   } catch { /* backup best-effort */ }
   writeFileSync(catalogPath, JSON.stringify(catalog, null, 2) + "\n", "utf-8");
   return { added: goEntries.length, path: catalogPath };
+}
+
+/**
+ * Restore the Codex catalog to native-only by dropping every opencodex-injected
+ * "<provider>/<model>" entry (those route through the proxy). Native gpt/codex slugs (no "/")
+ * are kept, so plain `codex` works when the proxy is stopped. Idempotent; no-op if nothing injected.
+ */
+export function restoreCodexCatalog(): { removed: number; kept: number; path: string } {
+  const catalogPath = readCodexCatalogPath();
+  const catalog = readCatalog(catalogPath);
+  if (!catalog || !Array.isArray(catalog.models)) return { removed: 0, kept: 0, path: catalogPath };
+  const before = catalog.models.length;
+  const native = catalog.models.filter(m => !(typeof m.slug === "string" && m.slug.includes("/")));
+  const removed = before - native.length;
+  if (removed > 0) {
+    catalog.models = native;
+    atomicWriteFile(catalogPath, JSON.stringify(catalog, null, 2) + "\n");
+  }
+  return { removed, kept: native.length, path: catalogPath };
 }

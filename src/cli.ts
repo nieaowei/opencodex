@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { restoreNativeCodex } from "./codex-inject";
 import { loadConfig, readPid, removePid, writePid } from "./config";
 import { startServer } from "./server";
 
@@ -11,7 +12,8 @@ function printUsage() {
 Usage:
   ocx init                    Interactive setup (provider + Codex config injection)
   ocx start [--port <port>]   Start the proxy server (auto-syncs models to Codex)
-  ocx stop                    Stop the running proxy server
+  ocx stop                    Stop the proxy AND restore native Codex (plain codex works again)
+  ocx restore                 Restore native Codex without stopping (alias: eject)
   ocx sync                    Fetch models from providers and inject into Codex config
   ocx status                  Check proxy server status
   ocx login <provider>        OAuth login (xai) — opens browser, stores token in ~/.opencodex/auth.json
@@ -67,6 +69,7 @@ function handleStart() {
     console.log("\n🛑 Shutting down opencodex proxy...");
     server.stop(true);
     removePid();
+    try { restoreNativeCodex(); } catch { /* best-effort restore */ }
     process.exit(0);
   };
 
@@ -76,18 +79,20 @@ function handleStart() {
 
 function handleStop() {
   const pid = readPid();
-  if (!pid) {
+  if (pid) {
+    try {
+      process.kill(pid, "SIGTERM");
+      console.log(`✅ Proxy (PID ${pid}) stopped.`);
+    } catch {
+      console.log("Proxy process not found.");
+    }
+    removePid();
+  } else {
     console.log("No running proxy found.");
-    return;
   }
-  try {
-    process.kill(pid, "SIGTERM");
-    removePid();
-    console.log(`✅ Proxy (PID ${pid}) stopped.`);
-  } catch {
-    removePid();
-    console.log("Proxy process not found. Cleaned up PID file.");
-  }
+  // Recover native Codex so plain `codex` keeps working while the proxy is down.
+  const r = restoreNativeCodex();
+  console.log(`↩️  ${r.message}`);
 }
 
 function handleStatus() {
@@ -111,6 +116,13 @@ switch (command) {
   case "stop":
     handleStop();
     break;
+  case "restore":
+  case "eject": {
+    const r = restoreNativeCodex();
+    console.log(r.success ? `✅ ${r.message}` : `⚠️  ${r.message}`);
+    console.log("Plain `codex` now runs natively (no proxy).");
+    break;
+  }
   case "status":
     handleStatus();
     break;
