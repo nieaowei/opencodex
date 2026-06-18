@@ -149,4 +149,9 @@ export interface OcxProviderConfig {
    * Only the openai-responses adapter implements "forward"; openai-chat uses its own key/token.
    */
   authMode?: "key" | "forward" | "oauth";
+  /**
+   * Model ids that do NOT support a reasoning/thinking parameter. The openai-chat adapter drops
+   * reasoning_effort for these even when Codex selects a reasoning level (e.g. xAI grok-build-0.1).
+   */
+  noReasoningModels?: string[];
 }

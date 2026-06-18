@@ -25,9 +25,11 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderDef> = {
       baseUrl: "https://api.x.ai/v1",
       authMode: "oauth",
       // Real xAI model ids (verified live via GET api.x.ai/v1/models); the proxy also fetches
-      // the live list at sync time, so this is the routing hint / fallback set.
-      models: ["grok-4.3", "grok-4.20-0309-reasoning", "grok-4.20-0309-non-reasoning"],
+      // the live list at sync time, so this is the routing hint / fallback + explicit additions.
+      models: ["grok-4.3", "grok-4.20-0309-reasoning", "grok-4.20-0309-non-reasoning", "grok-build-0.1", "grok-composer-2.5-fast"],
       defaultModel: "grok-4.3",
+      // These don't accept a reasoning/thinking param — never forward reasoning_effort for them.
+      noReasoningModels: ["grok-build-0.1", "grok-composer-2.5-fast"],
     },
     defaultModel: "grok-4.3",
   },

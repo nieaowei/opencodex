@@ -118,15 +118,19 @@ async function fetchProviderModels(name: string, prov: OcxProviderConfig): Promi
   if (prov.authMode === "forward") return []; // ChatGPT backend has no /models
   const apiKey = await resolveModelsAuthToken(name, prov);
   if (prov.authMode === "oauth" && !apiKey) return []; // not logged in → skip
+  const configured: CatalogModel[] = (prov.models ?? []).map(id => ({ id, provider: name }));
   const headers: Record<string, string> = { ...(prov.headers ?? {}) };
   if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
   try {
     const res = await fetch(`${prov.baseUrl}/models`, { headers, signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return [];
+    if (!res.ok) return configured;
     const json = await res.json() as { data?: { id: string; owned_by?: string }[] };
-    return (json.data ?? []).map(m => ({ id: m.id, provider: name, owned_by: m.owned_by }));
+    const live = (json.data ?? []).map(m => ({ id: m.id, provider: name, owned_by: m.owned_by }));
+    const liveIds = new Set(live.map(m => m.id));
+    // Merge explicit config additions (e.g. a model not in the provider's /models, like a new endpoint).
+    return [...live, ...configured.filter(m => !liveIds.has(m.id))];
   } catch {
-    return [];
+    return configured;
   }
 }
 

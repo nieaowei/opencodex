@@ -388,16 +388,23 @@ async function fetchAllModels(config: OcxConfig) {
     if (prov.authMode === "oauth" && !apiKey) return; // not logged in → skip silently
     const headers: Record<string, string> = { ...(prov.headers ?? {}) };
     if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+    const liveIds = new Set<string>();
     try {
       const res = await fetch(`${prov.baseUrl}/models`, { headers, signal: AbortSignal.timeout(5000) });
-      if (!res.ok) return;
-      const json = await res.json() as { data?: { id: string; owned_by?: string }[] };
-      if (json.data && Array.isArray(json.data)) {
-        for (const m of json.data) {
-          results.push({ id: m.id, provider: name, owned_by: m.owned_by });
+      if (res.ok) {
+        const json = await res.json() as { data?: { id: string; owned_by?: string }[] };
+        if (json.data && Array.isArray(json.data)) {
+          for (const m of json.data) {
+            results.push({ id: m.id, provider: name, owned_by: m.owned_by });
+            liveIds.add(m.id);
+          }
         }
       }
-    } catch { /* provider unreachable, skip */ }
+    } catch { /* provider unreachable */ }
+    // Merge explicit config additions (e.g. a new endpoint not in /models) not already listed.
+    for (const id of prov.models ?? []) {
+      if (!liveIds.has(id)) results.push({ id, provider: name });
+    }
   });
   await Promise.all(fetches);
   results.sort((a, b) => a.id.localeCompare(b.id));

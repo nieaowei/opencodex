@@ -103,7 +103,9 @@ export function createOpenAIChatAdapter(provider: OcxProviderConfig): ProviderAd
       if (parsed.options.temperature !== undefined) body.temperature = parsed.options.temperature;
       if (parsed.options.topP !== undefined) body.top_p = parsed.options.topP;
       if (parsed.options.stopSequences !== undefined) body.stop = parsed.options.stopSequences;
-      if (parsed.options.reasoning !== undefined) {
+      // Some models reject a reasoning/thinking param entirely (e.g. xAI grok-build-0.1,
+      // grok-composer-2.5-fast). Drop reasoning_effort for them even if Codex selected an effort.
+      if (parsed.options.reasoning !== undefined && !provider.noReasoningModels?.includes(parsed.modelId)) {
         // Many OpenAI-compatible providers (e.g. opencode zen / Xiaomi MiMo) only accept
         // low|medium|high. Clamp Codex's extra tiers so they don't 400 the upstream.
         const r = parsed.options.reasoning;
