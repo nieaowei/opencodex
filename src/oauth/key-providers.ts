@@ -3,7 +3,8 @@ import type { OcxProviderConfig } from "../types";
 /**
  * API-key "login" providers: not OAuth — the flow opens the provider's dashboard so the user can
  * create/copy a key, then validates + stores it as the provider's `apiKey` (authMode "key").
- * All use the OpenAI-compatible chat API with `Authorization: Bearer <key>` (the openai-chat adapter).
+ * Most use the OpenAI-compatible chat API (`openai-chat` adapter, `Authorization: Bearer <key>`); a
+ * few expose only an Anthropic-compatible endpoint and set `adapter: "anthropic"` (`x-api-key`).
  */
 export interface KeyLoginProvider {
   label: string;
@@ -62,6 +63,18 @@ export const KEY_LOGIN_PROVIDERS: Record<string, KeyLoginProvider> = {
       "gpt-oss", "qwen3-coder",
     ],
   },
+  // ── Brought over from the jawcode provider registry ────────────────────────────────────
+  // Real LLM API providers. CLI-agent integrations (cursor, github-copilot, gitlab-duo,
+  // google-gemini-cli/antigravity, kilo, opencode, openai-codex) and native-cloud-auth providers
+  // (amazon-bedrock, google-vertex) are intentionally excluded. baseUrls are taken from jawcode.
+  mistral: { label: "Mistral", baseUrl: "https://api.mistral.ai/v1", adapter: "openai-chat", dashboardUrl: "https://console.mistral.ai/api-keys", defaultModel: "codestral-latest" },
+  minimax: { label: "MiniMax", baseUrl: "https://api.minimax.io/v1", adapter: "openai-chat", dashboardUrl: "https://platform.minimax.io", defaultModel: "MiniMax-M2.5" },
+  "minimax-cn": { label: "MiniMax (CN)", baseUrl: "https://api.minimaxi.com/v1", adapter: "openai-chat", dashboardUrl: "https://platform.minimaxi.com", defaultModel: "MiniMax-M2.5" },
+  "kimi-code": { label: "Kimi (coding)", baseUrl: "https://api.kimi.com/coding/v1", adapter: "openai-chat", dashboardUrl: "https://platform.moonshot.cn/console/api-keys", defaultModel: "kimi-k2.5" },
+  "opencode-zen": { label: "opencode zen", baseUrl: "https://opencode.ai/zen/v1", adapter: "openai-chat", dashboardUrl: "https://opencode.ai/auth" },
+  "vercel-ai-gateway": { label: "Vercel AI Gateway", baseUrl: "https://ai-gateway.vercel.sh/v1", adapter: "openai-chat", dashboardUrl: "https://vercel.com/dashboard" },
+  // Xiaomi MiMo exposes an Anthropic-compatible endpoint → anthropic adapter (x-api-key).
+  xiaomi: { label: "Xiaomi MiMo", baseUrl: "https://api.xiaomimimo.com/anthropic", adapter: "anthropic", dashboardUrl: "https://xiaomimimo.com", defaultModel: "mimo-v2.5-pro" },
 };
 
 /**
