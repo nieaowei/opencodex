@@ -1,150 +1,131 @@
-# opencodex (ocx)
+# opencodex (`ocx`)
 
-Universal provider proxy for [OpenAI Codex](https://openai.com/codex) — use **any LLM** with Codex CLI, App, and SDK.
+**Universal provider proxy for [OpenAI Codex](https://openai.com/codex) — use any LLM with Codex CLI, App, and SDK.**
 
-Codex only speaks the Responses API (`/v1/responses`). opencodex sits between Codex and your LLM provider, translating protocols on the fly.
+📖 **[Full documentation →](https://lidge-jun.github.io/opencodex/)**
+
+Codex only speaks the Responses API (`/v1/responses`). opencodex sits between Codex and your LLM
+provider, translating the protocol on the fly — streaming, tool calls, reasoning, and images included
+— in both directions.
 
 ```
-Codex CLI/App/SDK → /v1/responses → opencodex → Any Provider
-                                         ↓
-                              Anthropic · Google · OpenRouter
-                              Groq · Ollama · Azure · OpenAI
+Codex CLI / App / SDK ──/v1/responses──▶ opencodex ──▶ Any provider
+                                              │
+              Anthropic · Google · xAI · Kimi · Ollama Cloud · Groq
+              OpenRouter · Azure · DeepSeek · GLM · …and OpenAI itself
 ```
 
-## Quick Start
+## Quick start
 
 ```bash
 # Install
-bun install -g opencodex
+bun install -g opencodex      # or: npm install -g opencodex
 
-# Interactive setup (creates config + injects into Codex)
+# Interactive setup (writes config + injects into Codex)
 ocx init
 
 # Start the proxy
 ocx start
 
-# Use Codex normally — it routes through opencodex
-codex "Write a hello world in Python"
+# Use Codex normally — it now routes through opencodex
+codex "Write a hello world in Rust"
 ```
 
-## Supported Providers
-
-| Provider | Adapter | Protocol |
-|----------|---------|----------|
-| OpenAI | `openai-responses` | Responses API (passthrough) |
-| Anthropic | `anthropic` | Messages API |
-| Google Gemini | `google` | Generative AI REST |
-| Azure OpenAI | `azure-openai` | Responses API + Azure auth |
-| OpenCode Go | `openai-chat` | Chat Completions |
-| OpenRouter | `openai-chat` | Chat Completions |
-| Groq | `openai-chat` | Chat Completions |
-| Ollama | `openai-chat` | Chat Completions |
-| LM Studio | `openai-chat` | Chat Completions |
-| vLLM | `openai-chat` | Chat Completions |
-| Any OpenAI-compatible | `openai-chat` | Chat Completions |
-
-## CLI Commands
+Target a specific routed model with the `provider/model` form:
 
 ```bash
-ocx init                    # Interactive setup
-ocx start [--port 10100]    # Start proxy
-ocx stop                    # Stop proxy
-ocx status                  # Check proxy status
-ocx gui                     # Open web dashboard
+codex -m "anthropic/claude-opus-4-8" "Explain this stack trace"
+codex -m "ollama-cloud/glm-5.2"      "Write a SQL migration"
+```
+
+## Highlights
+
+- **Five adapters** cover Anthropic Messages, Google Gemini, Azure, the OpenAI Responses passthrough,
+  and **every OpenAI-compatible Chat Completions** endpoint.
+- **OAuth, API key, or ChatGPT forward.** Log in with your xAI / Anthropic / Kimi account (tokens
+  auto-refresh), forward your `codex login`, or paste a key (`${ENV_VARS}` supported). An 18-provider
+  API-key catalog (incl. **Ollama Cloud**) is built in.
+- **Drops into Codex.** Injects a `[model_providers.opencodex]` table into `~/.codex/config.toml` and
+  merges routed models into Codex's catalog and subagent picker — fully reversible.
+- **Sidecars.** Give non-OpenAI models real **web search** and **image understanding** via a
+  `gpt-5.4-mini` over your ChatGPT login.
+- **Web dashboard** for providers, OAuth login, model selection, and request logs.
+
+## Providers & adapters
+
+| Provider | Adapter | Auth |
+|---|---|---|
+| OpenAI (ChatGPT login) | `openai-responses` | forward (no key) |
+| OpenAI (API key) | `openai-responses` | key |
+| Anthropic Claude | `anthropic` | oauth / key |
+| xAI Grok | `openai-chat` | oauth / key |
+| Kimi (Moonshot) | `openai-chat` | oauth / key |
+| Google Gemini | `google` | key |
+| Azure OpenAI | `azure` | key |
+| Ollama Cloud + 17-provider catalog | `openai-chat` | key |
+| Ollama / vLLM / LM Studio (local) | `openai-chat` | key (usually blank) |
+| Any OpenAI-compatible endpoint | `openai-chat` | key |
+
+## CLI
+
+```bash
+ocx init                       # interactive setup
+ocx start [--port 10100]       # start the proxy
+ocx stop                       # stop + restore native Codex
+ocx restore                    # restore without stopping (alias: ocx eject)
+ocx sync                       # refresh models + re-inject into Codex
+ocx status                     # is the proxy running?
+ocx login <xai|anthropic|kimi> # OAuth login
+ocx logout <provider>          # remove a stored login
+ocx gui                        # open the web dashboard
+ocx service <install|start|stop|status|uninstall>   # run as a background service
 ```
 
 ## Configuration
 
-Config lives at `~/.opencodex/config.json`:
+Config lives at `~/.opencodex/config.json`. Minimal example:
 
 ```json
 {
   "port": 10100,
+  "defaultProvider": "anthropic",
   "providers": {
     "anthropic": {
       "adapter": "anthropic",
       "baseUrl": "https://api.anthropic.com",
-      "apiKey": "sk-ant-...",
-      "defaultModel": "claude-sonnet-4-20250514"
+      "authMode": "oauth",
+      "defaultModel": "claude-sonnet-4-6"
     },
-    "opencode-go": {
+    "ollama-cloud": {
       "adapter": "openai-chat",
-      "baseUrl": "https://opencode.ai/zen/go/v1",
-      "apiKey": "sk-...",
-      "defaultModel": "kimi-k2.5"
+      "baseUrl": "https://ollama.com/v1",
+      "apiKey": "${OLLAMA_API_KEY}",
+      "defaultModel": "glm-5.2"
     }
-  },
-  "defaultProvider": "anthropic"
+  }
 }
 ```
 
-`ocx init` automatically adds to your Codex config:
+See the **[Configuration reference](https://lidge-jun.github.io/opencodex/reference/configuration/)**
+for every field.
 
-```toml
-# ~/.codex/config.toml
-model_provider = "opencodex"
+## Documentation
 
-[model_providers.opencodex]
-base_url = "http://localhost:10100/v1"
-wire_api = "responses"
-```
-
-## Model Routing
-
-opencodex automatically routes models to the right provider:
-
-- `claude-*` → `anthropic` adapter
-- `gpt-*`, `o1-*`, `o3-*` → `openai` adapter
-- `gemini-*` → `google` adapter
-- Other models → default provider
-
-## Web Dashboard
-
-```bash
-# Start proxy first
-ocx start
-
-# In another terminal, start the GUI dev server
-cd gui && bun dev
-```
-
-Dashboard features:
-- Real-time proxy status and uptime
-- Provider management (add/edit/remove)
-- Request log viewer with auto-refresh
-
-## Architecture
-
-```
-src/
-├── cli.ts              # CLI entry (ocx command)
-├── server.ts           # Bun.serve + routing + management API
-├── router.ts           # Model → provider routing
-├── config.ts           # Config management + PID
-├── bridge.ts           # AdapterEvent → Responses SSE
-├── init.ts             # Interactive setup
-├── codex-inject.ts     # Codex config.toml injection
-├── types.ts            # Core types
-├── responses/
-│   ├── parser.ts       # Responses API → internal context
-│   └── schema.ts       # Zod validation schemas
-└── adapters/
-    ├── base.ts         # Adapter interface
-    ├── openai-chat.ts  # Chat Completions (Tier 1)
-    ├── anthropic.ts    # Anthropic Messages
-    ├── google.ts       # Google Generative AI
-    ├── azure.ts        # Azure OpenAI
-    └── openai-responses.ts  # Passthrough
-```
+The full developer documentation — architecture, every adapter, the request lifecycle, the sidecars,
+Codex integration, and the CLI/config reference — is an Astro site under [`docs-site/`](./docs-site)
+and published to **[lidge-jun.github.io/opencodex](https://lidge-jun.github.io/opencodex/)**.
 
 ## Development
 
 ```bash
-git clone https://github.com/user/opencodex.git
+git clone https://github.com/lidge-jun/opencodex.git
 cd opencodex
 bun install
-bun run dev     # Start proxy in dev mode
+bun run dev          # start the proxy in dev mode
+bun x tsc --noEmit   # typecheck
 ```
+
+See **[Contributing](https://lidge-jun.github.io/opencodex/contributing/)**.
 
 ## License
 
