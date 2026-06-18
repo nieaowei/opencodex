@@ -37,6 +37,8 @@ const PRESETS: Preset[] = [
   { id: "google", label: "Google Gemini", adapter: "google", baseUrl: "https://generativelanguage.googleapis.com", defaultModel: "gemini-3-pro", auth: "key" },
   { id: "azure-openai", label: "Azure OpenAI", adapter: "azure-openai", baseUrl: "https://{resource}.openai.azure.com/openai/deployments/{deployment}", auth: "key" },
   { id: "ollama", label: "Ollama (local)", adapter: "openai-chat", baseUrl: "http://localhost:11434/v1", auth: "key", note: "Local — key usually blank" },
+  { id: "vllm", label: "vLLM (local)", adapter: "openai-chat", baseUrl: "http://localhost:8000/v1", auth: "key", note: "Local — key usually blank" },
+  { id: "lm-studio", label: "LM Studio (local)", adapter: "openai-chat", baseUrl: "http://localhost:1234/v1", auth: "key", note: "Local — no key needed" },
   { id: "custom", label: "Custom provider", adapter: "openai-chat", baseUrl: "", auth: "key" },
 ];
 
