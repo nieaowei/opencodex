@@ -63,6 +63,23 @@ function deriveEntry(template: RawEntry | null, slug: string, desc: string, prio
     e.visibility = "list";
     if ("upgrade" in e) e.upgrade = null;
     delete e.availability_nux; // don't replay another model's "now available" NUX
+    // Routed (namespaced) models inherit the gpt template — correct its OpenAI/GPT identity
+    // and cap reasoning to what the upstream actually accepts (low|medium|high).
+    if (slug.includes("/")) {
+      const modelName = slug.slice(slug.indexOf("/") + 1);
+      if (typeof e.base_instructions === "string") {
+        e.base_instructions = e.base_instructions.replace(
+          "You are Codex, a coding agent based on GPT-5.",
+          `You are a coding agent powered by the ${modelName} model, served through the opencodex proxy. Do not claim to be GPT-5 or made by OpenAI.`,
+        );
+      }
+      if (Array.isArray(e.supported_reasoning_levels)) {
+        e.supported_reasoning_levels = e.supported_reasoning_levels.filter(
+          (l: { effort?: string }) => l.effort === "low" || l.effort === "medium" || l.effort === "high",
+        );
+      }
+      e.default_reasoning_level = "medium";
+    }
     return e;
   }
   // Fallback when no template is available (best-effort; strict parser may need more).
@@ -142,7 +159,12 @@ export async function syncCatalogModels(config: OcxConfig): Promise<{ added: num
   if (goModels.length === 0) return { added: 0, path: catalogPath };
 
   const goEntries = buildCatalogEntries(template ? JSON.parse(JSON.stringify(template)) : null, [], goModels);
-  const native = (catalog.models ?? []).filter(m => typeof m.slug === "string" && !m.slug.includes("/"));
+  // Keep genuine native entries (gpt-*, codex-*), but drop bare duplicates of routed models —
+  // they're replaced by the namespaced, identity-corrected entries — plus any prior "/" entries.
+  const goIds = new Set(goModels.map(m => m.id));
+  const native = (catalog.models ?? []).filter(
+    m => typeof m.slug === "string" && !m.slug.includes("/") && !goIds.has(m.slug),
+  );
   catalog.models = [...native, ...goEntries];
 
   try {
