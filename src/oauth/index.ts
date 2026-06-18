@@ -36,6 +36,11 @@ export function isOAuthProvider(name: string): boolean {
   return name in OAUTH_PROVIDERS;
 }
 
+/** Provider ids that support real OAuth login (drives the GUI's "Log in with …" buttons). */
+export function listOAuthProviders(): string[] {
+  return Object.keys(OAUTH_PROVIDERS);
+}
+
 /** Return a valid access token, refreshing + persisting if expired. Throws if not logged in. */
 export async function getValidAccessToken(provider: string): Promise<string> {
   const def = OAUTH_PROVIDERS[provider];

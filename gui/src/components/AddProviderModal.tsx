@@ -5,7 +5,7 @@ export interface ProviderConfig {
   baseUrl: string;
   apiKey?: string;
   defaultModel?: string;
-  authMode?: "key" | "forward";
+  authMode?: "key" | "forward" | "oauth";
 }
 
 interface Preset {
@@ -14,17 +14,22 @@ interface Preset {
   adapter: string;
   baseUrl: string;
   defaultModel?: string;
-  auth: "oauth" | "key";
+  /** "oauth": real account login · "forward": gpt ChatGPT passthrough · "key": API key. */
+  auth: "oauth" | "forward" | "key";
+  /** OAuth registry id (for auth === "oauth"). */
+  oauthProvider?: string;
   note?: string;
 }
 
-// Known providers offered in the picker. `oauth` presets forward the caller's Codex login
-// (no API key); `key` presets need an API key.
+// `oauth` presets log in with the provider's own account (real OAuth). `forward` is the gpt
+// ChatGPT-login passthrough. `key` presets need an API key.
 const PRESETS: Preset[] = [
-  { id: "openai", label: "OpenAI (ChatGPT login)", adapter: "openai-responses", baseUrl: "https://chatgpt.com/backend-api/codex", auth: "oauth", note: "Uses your codex login — no API key needed" },
+  { id: "openai", label: "OpenAI (ChatGPT login)", adapter: "openai-responses", baseUrl: "https://chatgpt.com/backend-api/codex", auth: "forward", note: "Uses your codex login — no API key" },
+  { id: "xai", label: "xAI Grok", adapter: "openai-chat", baseUrl: "https://api.x.ai/v1", defaultModel: "grok-4.3", auth: "oauth", oauthProvider: "xai", note: "Log in with your Grok account" },
+  { id: "anthropic", label: "Anthropic Claude", adapter: "anthropic", baseUrl: "https://api.anthropic.com", defaultModel: "claude-sonnet-4-20250514", auth: "oauth", oauthProvider: "anthropic", note: "Log in with your Claude account" },
+  { id: "kimi", label: "Kimi", adapter: "openai-chat", baseUrl: "https://api.moonshot.ai/v1", defaultModel: "kimi-k2.6", auth: "oauth", oauthProvider: "kimi", note: "Log in with your Kimi account" },
   { id: "openai-apikey", label: "OpenAI (API key)", adapter: "openai-responses", baseUrl: "https://api.openai.com/v1", defaultModel: "gpt-5.5", auth: "key" },
   { id: "opencode-go", label: "opencode zen", adapter: "openai-chat", baseUrl: "https://opencode.ai/zen/go/v1", defaultModel: "kimi-k2.6", auth: "key", note: "GLM, DeepSeek, Kimi, Qwen, MiMo…" },
-  { id: "anthropic", label: "Anthropic Claude", adapter: "anthropic", baseUrl: "https://api.anthropic.com", defaultModel: "claude-sonnet-4-20250514", auth: "key" },
   { id: "openrouter", label: "OpenRouter", adapter: "openai-chat", baseUrl: "https://openrouter.ai/api/v1", auth: "key" },
   { id: "groq", label: "Groq", adapter: "openai-chat", baseUrl: "https://api.groq.com/openai/v1", auth: "key" },
   { id: "google", label: "Google Gemini", adapter: "google", baseUrl: "https://generativelanguage.googleapis.com", defaultModel: "gemini-3-pro", auth: "key" },
@@ -37,7 +42,7 @@ interface FormState {
   name: string;
   adapter: string;
   baseUrl: string;
-  authMode: "key" | "forward";
+  authMode: "key" | "forward" | "oauth";
   apiKey: string;
   defaultModel: string;
 }
@@ -55,6 +60,9 @@ export default function AddProviderModal({
   const [form, setForm] = useState<FormState | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [oauthSupported, setOauthSupported] = useState<string[]>([]);
+  const [oauthBusy, setOauthBusy] = useState(false);
+  const [oauthMsg, setOauthMsg] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { searchRef.current?.focus(); }, []);
@@ -63,13 +71,15 @@ export default function AddProviderModal({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+  useEffect(() => {
+    fetch(`${apiBase}/api/oauth/providers`).then(r => r.json()).then(d => setOauthSupported(d.providers ?? [])).catch(() => {});
+  }, [apiBase]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return PRESETS;
     // Match by provider name/id — not adapter, since most share "openai-chat" and would all match.
-    return PRESETS.filter(p =>
-      p.label.toLowerCase().includes(q) || p.id.toLowerCase().includes(q));
+    return PRESETS.filter(p => p.label.toLowerCase().includes(q) || p.id.toLowerCase().includes(q));
   }, [query]);
 
   const choosePreset = (p: Preset) => {
@@ -78,12 +88,14 @@ export default function AddProviderModal({
       name: p.id === "custom" ? "" : p.id,
       adapter: p.adapter,
       baseUrl: p.baseUrl,
-      authMode: p.auth === "oauth" ? "forward" : "key",
+      authMode: p.auth,
       apiKey: "",
       defaultModel: p.defaultModel ?? "",
     });
-    setError("");
+    setError(""); setOauthMsg("");
   };
+
+  const back = () => { setPreset(null); setForm(null); setError(""); setOauthMsg(""); };
 
   const submit = async () => {
     if (!form) return;
@@ -116,6 +128,39 @@ export default function AddProviderModal({
     }
   };
 
+  // Real OAuth login: open the provider's auth page in a new tab, poll until the proxy stores the token.
+  const loginOAuth = async (providerId: string) => {
+    setOauthBusy(true);
+    setOauthMsg("");
+    try {
+      const res = await fetch(`${apiBase}/api/oauth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: providerId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.url) {
+        setOauthMsg(data.error === "unknown oauth provider"
+          ? "OAuth login for this provider arrives in the next update — use an API key for now."
+          : (data.error || "Login failed to start"));
+        return;
+      }
+      window.open(data.url, "_blank");
+      setOauthMsg("Waiting for browser login…");
+      for (let i = 0; i < 100; i++) {
+        await new Promise(r => setTimeout(r, 2000));
+        const s = await fetch(`${apiBase}/api/oauth/status?provider=${providerId}`).then(r => r.json()).catch(() => null);
+        if (s?.loggedIn) { onAdded(providerId); return; }
+        if (s?.error) { setOauthMsg(`Login error: ${s.error}`); return; }
+      }
+      setOauthMsg("Login timed out — try again.");
+    } catch {
+      setOauthMsg("Network error — is the proxy running?");
+    } finally {
+      setOauthBusy(false);
+    }
+  };
+
   const dup = form ? existingNames.includes(form.name.trim()) && form.name.trim() !== "" : false;
 
   return (
@@ -145,51 +190,73 @@ export default function AddProviderModal({
                     </div>
                   </div>
                   {p.auth === "oauth"
-                    ? <span style={badge("#16a34a", "#dcfce7")}>OAuth</span>
-                    : <span style={badge("#6b7280", "#f3f4f6")}>API key</span>}
+                    ? <span style={badge("#2563eb", "#dbeafe")}>OAuth login</span>
+                    : p.auth === "forward"
+                      ? <span style={badge("#16a34a", "#dcfce7")}>Codex login</span>
+                      : <span style={badge("#6b7280", "#f3f4f6")}>API key</span>}
                 </button>
               ))}
               {filtered.length === 0 && <div style={{ fontSize: 13, color: "#888", padding: 8 }}>No match.</div>}
             </div>
           </>
         ) : form && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <Field label="Provider name">
-              <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. openrouter" style={input} />
-            </Field>
-            {dup && <div style={{ fontSize: 12, color: "#d97706" }}>A provider named “{form.name.trim()}” exists — it will be overwritten.</div>}
-            <Field label="Adapter">
-              <select value={form.adapter} onChange={e => setForm({ ...form, adapter: e.target.value })} style={input}>
-                {["openai-responses", "openai-chat", "anthropic", "google", "azure-openai"].map(a => <option key={a} value={a}>{a}</option>)}
-              </select>
-            </Field>
-            <Field label="Base URL">
-              <input value={form.baseUrl} onChange={e => setForm({ ...form, baseUrl: e.target.value })} placeholder="https://…" style={input} />
-            </Field>
-            <Field label="Auth">
-              <div style={{ display: "flex", gap: 8 }}>
-                <Radio checked={form.authMode === "key"} onChange={() => setForm({ ...form, authMode: "key" })} label="API key" />
-                <Radio checked={form.authMode === "forward"} onChange={() => setForm({ ...form, authMode: "forward" })} label="Forward Codex login (OAuth)" />
+          preset.auth === "oauth" && form.authMode === "oauth" ? (
+            // ── Real OAuth login pane ──
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ fontSize: 13, color: "#555" }}>{preset.note ?? "Log in with your account — no API key needed."}</div>
+              {oauthSupported.includes(preset.oauthProvider ?? "") ? (
+                <button onClick={() => loginOAuth(preset.oauthProvider!)} disabled={oauthBusy}
+                  style={{ ...btn("#2563eb"), opacity: oauthBusy ? 0.6 : 1, fontSize: 14, padding: "12px 16px" }}>
+                  {oauthBusy ? "Waiting for browser…" : `🔐 Log in with ${preset.label}`}
+                </button>
+              ) : (
+                <div style={{ fontSize: 13, color: "#b45309", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, padding: "10px 12px" }}>
+                  OAuth login for {preset.label} arrives in the next update. Use an API key for now.
+                </div>
+              )}
+              {oauthMsg && <div style={{ fontSize: 12, color: /error|update|timed/.test(oauthMsg) ? "#b45309" : "#2563eb" }}>{oauthMsg}</div>}
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 2 }}>
+                <button onClick={() => { setForm({ ...form, authMode: "key" }); setOauthMsg(""); }} style={linkBtn}>Use an API key instead</button>
+                <div style={{ flex: 1 }} />
+                <button onClick={back} style={btn("#9ca3af")}>Back</button>
               </div>
-            </Field>
-            {form.authMode === "key" ? (
-              <Field label="API key">
-                <input type="password" value={form.apiKey} onChange={e => setForm({ ...form, apiKey: e.target.value })} placeholder="sk-… (or $ENV_VAR)" style={input} />
-              </Field>
-            ) : (
-              <div style={{ fontSize: 12, color: "#16a34a", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 6, padding: "8px 10px" }}>
-                No key needed — the proxy forwards your <code>codex login</code> credentials to this provider.
-              </div>
-            )}
-            <Field label="Default model (optional)">
-              <input value={form.defaultModel} onChange={e => setForm({ ...form, defaultModel: e.target.value })} placeholder="e.g. gpt-5.5" style={input} />
-            </Field>
-            {error && <div role="alert" style={{ fontSize: 13, color: "#ef4444" }}>{error}</div>}
-            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-              <button onClick={submit} disabled={saving} style={{ ...btn("#3b82f6"), opacity: saving ? 0.6 : 1 }}>{saving ? "Adding…" : "Add provider"}</button>
-              <button onClick={() => { setPreset(null); setForm(null); setError(""); }} style={btn("#9ca3af")}>Back</button>
             </div>
-          </div>
+          ) : (
+            // ── API key / Codex-forward form ──
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <Field label="Provider name">
+                <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. openrouter" style={input} />
+              </Field>
+              {dup && <div style={{ fontSize: 12, color: "#d97706" }}>A provider named “{form.name.trim()}” exists — it will be overwritten.</div>}
+              <Field label="Adapter">
+                <select value={form.adapter} onChange={e => setForm({ ...form, adapter: e.target.value })} style={input}>
+                  {["openai-responses", "openai-chat", "anthropic", "google", "azure-openai"].map(a => <option key={a} value={a}>{a}</option>)}
+                </select>
+              </Field>
+              <Field label="Base URL">
+                <input value={form.baseUrl} onChange={e => setForm({ ...form, baseUrl: e.target.value })} placeholder="https://…" style={input} />
+              </Field>
+              {form.authMode === "forward" ? (
+                <div style={{ fontSize: 12, color: "#16a34a", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 6, padding: "8px 10px" }}>
+                  No key needed — the proxy forwards your <code>codex login</code> credentials to this provider.
+                </div>
+              ) : (
+                <Field label="API key">
+                  <input type="password" value={form.apiKey} onChange={e => setForm({ ...form, apiKey: e.target.value })} placeholder="sk-… (or $ENV_VAR)" style={input} />
+                </Field>
+              )}
+              <Field label="Default model (optional)">
+                <input value={form.defaultModel} onChange={e => setForm({ ...form, defaultModel: e.target.value })} placeholder="e.g. gpt-5.5" style={input} />
+              </Field>
+              {error && <div role="alert" style={{ fontSize: 13, color: "#ef4444" }}>{error}</div>}
+              <div style={{ display: "flex", gap: 8, marginTop: 4, alignItems: "center" }}>
+                <button onClick={submit} disabled={saving} style={{ ...btn("#3b82f6"), opacity: saving ? 0.6 : 1 }}>{saving ? "Adding…" : "Add provider"}</button>
+                {preset.auth === "oauth" && <button onClick={() => { setForm({ ...form, authMode: "oauth" }); setError(""); }} style={linkBtn}>← Use OAuth login</button>}
+                <div style={{ flex: 1 }} />
+                <button onClick={back} style={btn("#9ca3af")}>Back</button>
+              </div>
+            </div>
+          )
         )}
       </div>
     </div>
@@ -202,16 +269,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span style={{ fontSize: 12, color: "#555", fontWeight: 500 }}>{label}</span>
       {children}
     </label>
-  );
-}
-
-function Radio({ checked, onChange, label }: { checked: boolean; onChange: () => void; label: string }) {
-  return (
-    <button onClick={onChange} style={{
-      flex: 1, padding: "8px 10px", borderRadius: 6, fontSize: 13, cursor: "pointer",
-      border: checked ? "1.5px solid #3b82f6" : "1px solid #e5e7eb",
-      background: checked ? "#eff6ff" : "#fff", color: checked ? "#1d4ed8" : "#444", textAlign: "left",
-    }}>{label}</button>
   );
 }
 
@@ -238,6 +295,9 @@ const iconBtn: React.CSSProperties = {
 const btn = (bg: string): React.CSSProperties => ({
   padding: "8px 16px", borderRadius: 6, border: "none", background: bg, color: "#fff", fontSize: 13, cursor: "pointer",
 });
+const linkBtn: React.CSSProperties = {
+  border: "none", background: "none", color: "#2563eb", fontSize: 13, cursor: "pointer", padding: "8px 2px", textDecoration: "underline",
+};
 const badge = (color: string, bg: string): React.CSSProperties => ({
   fontSize: 11, fontWeight: 600, color, background: bg, padding: "2px 8px", borderRadius: 999, whiteSpace: "nowrap",
 });

@@ -12,7 +12,7 @@ import { routeModel } from "./router";
 import { namespacedToolName } from "./types";
 import {
   clearLoginState, getLoginStatus, getValidAccessToken, isOAuthProvider,
-  resolveModelsAuthToken, startLoginFlow, upsertOAuthProvider,
+  listOAuthProviders, resolveModelsAuthToken, startLoginFlow, upsertOAuthProvider,
 } from "./oauth/index";
 import { removeCredential } from "./oauth/store";
 import type { OcxConfig, OcxProviderConfig } from "./types";
@@ -278,6 +278,11 @@ async function handleManagementAPI(req: Request, url: URL, config: OcxConfig): P
     return jsonResponse(models.map(m => ({ ...m, namespaced: `${m.provider}/${m.id}` })));
   }
 
+  // Which providers support real OAuth login (drives the GUI's "Log in with …" buttons).
+  if (url.pathname === "/api/oauth/providers" && req.method === "GET") {
+    return jsonResponse({ providers: listOAuthProviders() });
+  }
+
   // OAuth login (xai now; anthropic/kimi in cycle 2). Starts the flow and returns the auth URL;
   // the provider's loopback callback server (inside this process) captures the redirect in the
   // background, then the credential is persisted. The GUI opens the URL and polls /api/oauth/status.
@@ -301,6 +306,7 @@ async function handleManagementAPI(req: Request, url: URL, config: OcxConfig): P
 
   if (url.pathname === "/api/oauth/logout" && req.method === "POST") {
     const provider = (url.searchParams.get("provider") ?? "").trim().toLowerCase();
+    if (!isOAuthProvider(provider)) return jsonResponse({ error: "unknown oauth provider" }, 400);
     removeCredential(provider);
     clearLoginState(provider);
     return jsonResponse({ success: true });
