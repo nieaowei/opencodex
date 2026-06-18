@@ -5,7 +5,7 @@ import Logs from "./pages/Logs";
 
 type Page = "dashboard" | "providers" | "logs";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:10100";
+const API_BASE = import.meta.env.VITE_API_BASE || "";
 
 export default function App() {
   const [page, setPage] = useState<Page>("dashboard");

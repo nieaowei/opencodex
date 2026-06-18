@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { extname, join } from "node:path";
 import { createAnthropicAdapter } from "./adapters/anthropic";
 import { createAzureAdapter } from "./adapters/azure";
 import { createGoogleAdapter } from "./adapters/google";
@@ -10,6 +12,50 @@ import { routeModel } from "./router";
 import type { OcxConfig, OcxProviderConfig } from "./types";
 
 const VERSION = "0.0.1";
+
+const MIME_TYPES: Record<string, string> = {
+  ".html": "text/html", ".js": "application/javascript", ".css": "text/css",
+  ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png",
+  ".ico": "image/x-icon",
+};
+
+function findGuiDist(): string | null {
+  const candidates = [
+    join(import.meta.dir, "..", "gui", "dist"),
+    join(import.meta.dir, "..", "..", "gui", "dist"),
+  ];
+  for (const c of candidates) {
+    if (existsSync(join(c, "index.html"))) return c;
+  }
+  return null;
+}
+
+const GUI_DIST = findGuiDist();
+
+function serveGuiFile(pathname: string): Response | null {
+  if (!GUI_DIST) return null;
+  const filePath = pathname === "/" || pathname === ""
+    ? join(GUI_DIST, "index.html")
+    : join(GUI_DIST, pathname);
+
+  if (!existsSync(filePath)) {
+    if (!extname(pathname)) {
+      const indexPath = join(GUI_DIST, "index.html");
+      if (existsSync(indexPath)) {
+        return new Response(Bun.file(indexPath), {
+          headers: { "Content-Type": "text/html" },
+        });
+      }
+    }
+    return null;
+  }
+
+  const ext = extname(filePath);
+  const contentType = MIME_TYPES[ext] || "application/octet-stream";
+  return new Response(Bun.file(filePath), {
+    headers: { "Content-Type": contentType },
+  });
+}
 
 function resolveAdapter(providerConfig: OcxProviderConfig) {
   switch (providerConfig.adapter) {
@@ -200,6 +246,9 @@ export function startServer(port?: number) {
         return response;
       }
 
+      const guiFile = serveGuiFile(url.pathname);
+      if (guiFile) return guiFile;
+
       return formatErrorResponse(404, "not_found", `Unknown endpoint: ${req.method} ${url.pathname}`);
     },
   });
@@ -208,6 +257,7 @@ export function startServer(port?: number) {
   console.log(`   POST /v1/responses → provider translation`);
   console.log(`   GET  /healthz      → health check`);
   console.log(`   GET  /api/*        → management API`);
+  console.log(`   GET  /             → GUI dashboard`);
 
   return server;
 }

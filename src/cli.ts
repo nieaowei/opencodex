@@ -93,13 +93,16 @@ switch (command) {
     handleStatus();
     break;
   case "gui": {
-    const { loadConfig } = await import("./config");
-    const config = loadConfig();
+    const cfg = await import("./config");
+    const config = cfg.loadConfig();
     const guiUrl = `http://localhost:${config.port}`;
-    console.log(`Opening GUI at ${guiUrl}...`);
-    console.log("Note: proxy must be running (ocx start) and GUI dev server (cd gui && bun dev)");
-    const { exec } = await import("node:child_process");
-    exec(`open ${guiUrl}`);
+    if (!cfg.readPid()) {
+      console.log("Proxy not running. Starting...");
+      handleStart();
+      await new Promise(r => setTimeout(r, 1000));
+    }
+    console.log(`Opening ${guiUrl}`);
+    (await import("node:child_process")).exec(`open ${guiUrl}`);
     break;
   }
   case "help":
