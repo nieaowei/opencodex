@@ -21,9 +21,6 @@ const IMAGE_INSTRUCTION =
   " The model that will read your answer is TEXT-ONLY and cannot see images: if the results include " +
   "relevant images, describe what they show in words and include their source URLs in your answer.";
 
-/** Bound the sidecar's answer length upstream (the tool_result is also clamped downstream). */
-const SIDECAR_MAX_OUTPUT_TOKENS = 1500;
-
 /** A search result, or an `error` string when the search couldn't run (surfaced as a tool result). */
 export type SidecarOutcome = WebSearchResult & { error?: string };
 
@@ -53,8 +50,10 @@ export async function runWebSearch(
     tools: [hostedTool],
     tool_choice: "auto",
     reasoning: { effort: settings.reasoning },
-    max_output_tokens: SIDECAR_MAX_OUTPUT_TOKENS,
-    store: false, // the ChatGPT (codex) backend rejects the request otherwise ("Store must be set to false")
+    // NOTE: the ChatGPT (codex) backend rejects `max_output_tokens` ("Unsupported parameter") and
+    // requires `store: false` — keep this body minimal. Answer length is capped downstream
+    // (format-result clamps the injected tool_result), so no upstream cap is needed.
+    store: false,
     stream: true,
   };
   const url = `${forwardProvider.baseUrl}/responses`;

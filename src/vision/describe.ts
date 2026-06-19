@@ -13,8 +13,6 @@ export type DescribeOutcome = { text: string; error?: string };
 const ALLOWED_IMAGE_MIME = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"]);
 /** ~20 MB — generous enough for screenshots; rejects pathological payloads before forwarding. */
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
-/** Bound the description so the vision model can't emit an unboundedly long (costly) response. */
-const VISION_MAX_OUTPUT_TOKENS = 1500;
 
 /**
  * Validate an image URL before forwarding. Data URLs are checked for an allowed media type and a sane
@@ -73,7 +71,8 @@ export async function describeImage(
       "what's relevant to the user's request. Output only the description.",
     input: [{ type: "message", role: "user", content }],
     reasoning: { effort: "low" },
-    max_output_tokens: VISION_MAX_OUTPUT_TOKENS,
+    // The ChatGPT (codex) backend rejects `max_output_tokens` ("Unsupported parameter"); the
+    // description is clamped downstream (DESC_MAX_CHARS) instead.
     store: false,
     stream: true,
   };
