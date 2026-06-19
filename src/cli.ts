@@ -3,6 +3,7 @@ import { restoreNativeCodex } from "./codex-inject";
 import { loadConfig, readPid, removePid, writePid } from "./config";
 import { serviceCommand } from "./service";
 import { startServer } from "./server";
+import { maybeShowStarPrompt } from "./star-prompt";
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -65,6 +66,7 @@ function handleStart() {
   const server = startServer(port);
   writePid(process.pid);
 
+  maybeShowStarPrompt(); // once-only GitHub-star request on first interactive start
   syncModelsToCodex(port).catch(() => {});
 
   const shutdown = () => {
