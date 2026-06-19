@@ -6,6 +6,7 @@ import { CODEX_CONFIG_PATH, CODEX_MODELS_CACHE_PATH, DEFAULT_CATALOG_PATH, readR
 import { DEFAULT_MODEL_CACHE_TTL_MS, getFreshCached, getStaleCached, setCached } from "./model-cache";
 import { buildModelsRequest, resolveModelsAuthToken } from "./oauth/index";
 import type { OcxConfig, OcxProviderConfig } from "./types";
+import { getJawcodeModelMetadata, resolveJawcodeProvider } from "./generated/jawcode-model-metadata";
 
 const OCX_DIR = join(homedir(), ".opencodex");
 const CATALOG_BACKUP_PATH = join(OCX_DIR, "catalog-backup.json");
@@ -86,6 +87,25 @@ export function normalizeRoutedCatalogEntry(entry: RawEntry): RawEntry {
   return entry;
 }
 
+function applyJawcodeCatalogMetadata(entry: RawEntry, slug: string): void {
+  const slash = slug.indexOf("/");
+  if (slash < 0) return;
+  const provider = slug.slice(0, slash);
+  const modelId = slug.slice(slash + 1);
+  const jawcodeProvider = resolveJawcodeProvider(provider);
+  if (!jawcodeProvider) return;
+  const meta = getJawcodeModelMetadata(jawcodeProvider, modelId);
+  if (!meta) return;
+  if (typeof meta.contextWindow === "number" && meta.contextWindow > 0) {
+    entry.context_window = meta.contextWindow;
+    entry.max_context_window = meta.contextWindow;
+    entry.auto_compact_token_limit = Math.floor(meta.contextWindow * 0.9);
+  }
+  if (Array.isArray(meta.input) && meta.input.length > 0) {
+    entry.input_modalities = meta.input;
+  }
+}
+
 function loadCatalogForSync(path: string): { models?: RawEntry[]; [k: string]: unknown } | null {
   const catalog = readCatalog(path);
   if (catalog) return catalog;
@@ -150,18 +170,21 @@ function deriveEntry(template: RawEntry | null, slug: string, desc: string, prio
       e.supported_reasoning_levels = ROUTED_REASONING_LEVELS.map(l => byEffort.get(l.effort) ?? { ...l });
       e.default_reasoning_level = "medium";
       normalizeRoutedCatalogEntry(e);
+      applyJawcodeCatalogMetadata(e, slug);
     }
     return normalizeServiceTiers(e);
   }
   // Fallback when no template is available (best-effort; strict parser may need more).
-  return normalizeServiceTiers({
+  const entry: RawEntry = {
     slug, display_name: slug, description: desc,
     default_reasoning_level: "medium",
     supported_reasoning_levels: ROUTED_REASONING_LEVELS.map(l => ({ ...l })),
     shell_type: "shell_command", visibility: "list", supported_in_api: true,
     priority, base_instructions: "You are a helpful coding assistant.",
     ...(slug.includes("/") ? { web_search_tool_type: "text_and_image", supports_search_tool: true } : {}),
-  });
+  };
+  applyJawcodeCatalogMetadata(entry, slug);
+  return normalizeServiceTiers(entry);
 }
 
 /**

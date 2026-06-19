@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { buildCatalogEntries, normalizeRoutedCatalogEntry } from "../src/codex-catalog";
+import { getJawcodeModelMetadata, resolveJawcodeProvider } from "../src/generated/jawcode-model-metadata";
 
 function nativeTemplate(): Record<string, unknown> {
   return {
@@ -97,5 +98,48 @@ describe("Codex catalog routed normalization", () => {
 
     expect(routed?.web_search_tool_type).toBe("text_and_image");
     expect(routed?.supports_search_tool).toBe(true);
+  });
+
+  test("routed entries receive exact jawcode context metadata", () => {
+    const entries = buildCatalogEntries(nativeTemplate(), [], [
+      { provider: "opencode-go", id: "deepseek-v4-pro" },
+    ]);
+    const routed = entries.find(e => e.slug === "opencode-go/deepseek-v4-pro");
+
+    expect(routed?.context_window).toBe(1_000_000);
+    expect(routed?.max_context_window).toBe(1_000_000);
+    expect(routed?.auto_compact_token_limit).toBe(900_000);
+    expect(routed?.input_modalities).toEqual(["text"]);
+  });
+
+  test("routed entries resolve jawcode provider aliases", () => {
+    const entries = buildCatalogEntries(nativeTemplate(), [], [
+      { provider: "kimi", id: "kimi-k2.5" },
+    ]);
+    const routed = entries.find(e => e.slug === "kimi/kimi-k2.5");
+
+    expect(routed?.context_window).toBe(262_144);
+    expect(routed?.max_context_window).toBe(262_144);
+    expect(routed?.auto_compact_token_limit).toBe(235_929);
+    expect(routed?.input_modalities).toEqual(["text", "image"]);
+  });
+
+  test("unknown routed entries do not guess jawcode metadata", () => {
+    const entries = buildCatalogEntries(null, [], [
+      { provider: "local", id: "qwen3-coder" },
+    ]);
+    const routed = entries.find(e => e.slug === "local/qwen3-coder");
+
+    expect(routed).not.toHaveProperty("context_window");
+    expect(routed).not.toHaveProperty("max_context_window");
+    expect(routed).not.toHaveProperty("auto_compact_token_limit");
+    expect(routed).not.toHaveProperty("input_modalities");
+  });
+
+  test("generated jawcode snapshot is restricted to mapped providers", () => {
+    expect(resolveJawcodeProvider("kimi")).toBe("moonshot");
+    expect(resolveJawcodeProvider("nanogpt")).toBeUndefined();
+    expect(getJawcodeModelMetadata("moonshot", "kimi-k2.5")?.contextWindow).toBe(262_144);
+    expect(getJawcodeModelMetadata("nanogpt", "some-model")).toBeUndefined();
   });
 });

@@ -23,6 +23,7 @@
     "start": "bun run src/cli.ts start",
     "test": "bun test tests",
     "typecheck": "bun x tsc --noEmit",
+    "generate:jawcode-metadata": "bun scripts/generate-jawcode-metadata.ts",
     "build:gui": "cd gui && bun install && bun run build",
     "postinstall": "node scripts/postinstall.mjs",
     "prepublishOnly": "bun run typecheck && bun run build:gui",
