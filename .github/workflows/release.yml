@@ -1,0 +1,87 @@
+name: Release
+
+# Publish opencodex to npm — jawcode-style: triggered from the Actions tab with an explicit
+# version, dist-tag, and a dry-run-first default. Bump package.json on main BEFORE dispatching
+# (or use `bun run release <version>`, which does the bump+commit+push+dispatch for you); the
+# workflow verifies the version matches before publishing.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish — must equal package.json (e.g. 0.1.0)"
+        required: true
+        type: string
+      tag:
+        description: "npm dist-tag"
+        required: true
+        type: choice
+        options:
+          - latest
+          - preview
+        default: latest
+      dry-run:
+        description: "Dry run (build + pack, no actual publish)"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write # npm provenance attestation
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # opencodex is bun-native (the prepublishOnly GUI build + typecheck run under bun).
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # node + npm perform the actual publish (with provenance); registry-url wires NODE_AUTH_TOKEN.
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Verify version matches package.json
+        run: |
+          PKG=$(node -p "require('./package.json').version")
+          echo "package.json=$PKG  input=${{ inputs.version }}"
+          test "$PKG" = "${{ inputs.version }}" || {
+            echo "::error::package.json ($PKG) != requested (${{ inputs.version }}) — bump package.json on main first";
+            exit 1;
+          }
+
+      # `npm publish` runs prepublishOnly (typecheck + build the GUI into gui/dist) first, so even a
+      # dry-run fully verifies the build. --provenance attests the tarball was built in this CI run.
+      - name: Publish (or dry-run)
+        run: |
+          if [ "${{ inputs.dry-run }}" = "true" ]; then
+            echo "::notice::DRY RUN — building + packing, not publishing"
+            npm publish --dry-run --tag "${{ inputs.tag }}" --access public --provenance
+          else
+            npm publish --tag "${{ inputs.tag }}" --access public --provenance
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Confirm the registry actually has the new version (real publishes only).
+      - name: Post-publish registry smoke
+        if: ${{ inputs.dry-run != true }}
+        run: |
+          sleep 10
+          npm view "opencodex@${{ inputs.version }}" version dist-tags

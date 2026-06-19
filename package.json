@@ -24,7 +24,9 @@
     "typecheck": "bun x tsc --noEmit",
     "build:gui": "cd gui && bun install && bun run build",
     "postinstall": "node scripts/postinstall.mjs",
-    "prepublishOnly": "bun run typecheck && bun run build:gui"
+    "prepublishOnly": "bun run typecheck && bun run build:gui",
+    "release": "bun scripts/release.ts",
+    "release:watch": "bun scripts/release.ts watch"
   },
   "dependencies": {
     "zod": "^4.0.0"
