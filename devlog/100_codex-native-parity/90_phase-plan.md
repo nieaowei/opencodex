@@ -167,7 +167,10 @@ Runtime checks:
    can be added later.
 2. Should routed models inherit Codex feature-default multi-agent behavior by deleting
    `multi_agent_version`, or should opencodex force a specific version?
-3. Should routed models expose deferred `tool_search` by default?
+3. Resolved in Phase 100.2/100.16:
+   - routed models expose deferred `tool_search` by default;
+   - routed hosted web-search metadata is `text_and_image` because actual hosted search runs via
+     native `gpt-5.4-mini` sidecar.
 4. What conservative context-window default should apply when jawcode has no exact provider/model
    match?
 5. Resolved: Phase 100 will not implement websocket support or a websocket spike. Routed providers
