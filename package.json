@@ -10,6 +10,7 @@
   },
   "files": [
     "src",
+    "scripts/postinstall.mjs",
     "gui/dist",
     "README.md",
     "LICENSE"
@@ -22,6 +23,7 @@
     "start": "bun run src/cli.ts start",
     "typecheck": "bun x tsc --noEmit",
     "build:gui": "cd gui && bun install && bun run build",
+    "postinstall": "node scripts/postinstall.mjs",
     "prepublishOnly": "bun run typecheck && bun run build:gui"
   },
   "dependencies": {

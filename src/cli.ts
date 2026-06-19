@@ -66,7 +66,7 @@ function handleStart() {
   const server = startServer(port);
   writePid(process.pid);
 
-  maybeShowStarPrompt(); // once-only GitHub-star request on first interactive start
+  void maybeShowStarPrompt(); // once-only [Y/n] GitHub-star prompt on first interactive start
   syncModelsToCodex(port).catch(() => {});
 
   const shutdown = () => {

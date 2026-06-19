@@ -1,30 +1,50 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { spawnSync } from "node:child_process";
+import { createInterface } from "node:readline/promises";
 import { getConfigDir } from "./config";
 
-const REPO_URL = "https://github.com/lidge-jun/opencodex";
-/** Marker so the prompt is shown exactly once per install. */
+const REPO = "lidge-jun/opencodex";
+/** Shared with scripts/postinstall.mjs so the prompt fires exactly once across install + first start. */
 const MARKER = ".star-prompted";
 
-/**
- * On the FIRST interactive `ocx start`, print a one-time GitHub-star request and drop a marker file
- * so it never shows again. No-op for the background service (OCX_SERVICE=1) and non-TTY/piped runs.
- */
-export function maybeShowStarPrompt(): void {
-  if (process.env.OCX_SERVICE || !process.stdout.isTTY) return;
-  const dir = getConfigDir();
-  const marker = join(dir, MARKER);
-  if (existsSync(marker)) return;
-  try {
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(marker, new Date().toISOString());
-  } catch { /* best-effort: if the marker can't be written, still show it this once */ }
+function ghAvailable(): boolean {
+  const r = spawnSync("gh", ["--version"], { stdio: "ignore", timeout: 3000, windowsHide: true });
+  return !r.error && r.status === 0;
+}
 
-  const RESET = "\x1b[0m", PURPLE = "\x1b[38;5;141m", BOLD = "\x1b[1m", UL = "\x1b[4m", DIM = "\x1b[2m";
-  console.log("");
-  console.log(`  ${PURPLE}${BOLD}⭐  Enjoying opencodex?${RESET}`);
-  console.log("  A GitHub star genuinely helps the project grow — thank you!");
-  console.log(`  ${UL}${PURPLE}${REPO_URL}${RESET}`);
-  console.log(`  ${DIM}(shown once)${RESET}`);
-  console.log("");
+function starRepo(): { ok: boolean; error?: string } {
+  const r = spawnSync("gh", ["api", "-X", "PUT", `/user/starred/${REPO}`],
+    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 10000, windowsHide: true });
+  if (r.error) return { ok: false, error: r.error.message };
+  if (r.status !== 0) return { ok: false, error: (r.stderr || r.stdout || "").trim() || `gh exited ${r.status}` };
+  return { ok: true };
+}
+
+/**
+ * First interactive `ocx start`: a one-time `[Y/n]` "star on GitHub?" prompt. On yes, stars the repo
+ * via the user's `gh` auth (same approach as the npm postinstall). No-op under the background service,
+ * for non-TTY/piped runs, when already prompted, or when `gh` is unavailable. Never throws.
+ */
+export async function maybeShowStarPrompt(): Promise<void> {
+  try {
+    if (process.env.OCX_SERVICE || !process.stdin.isTTY || !process.stdout.isTTY) return;
+    const dir = getConfigDir();
+    const marker = join(dir, MARKER);
+    if (existsSync(marker)) return;
+    if (!ghAvailable()) return; // can't star without gh — stay silent and re-check on a later start
+    try { mkdirSync(dir, { recursive: true }); writeFileSync(marker, new Date().toISOString()); } catch { /* best-effort */ }
+
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    let yes = false;
+    try {
+      const ans = (await rl.question("\n  \x1b[38;5;141m⭐ Enjoying opencodex? Star it on GitHub?\x1b[0m [Y/n] ")).trim().toLowerCase();
+      yes = ans === "" || ans === "y" || ans === "yes";
+    } finally {
+      rl.close();
+    }
+    if (!yes) return;
+    const r = starRepo();
+    console.log(r.ok ? "  Thanks for the star! ⭐\n" : `  Couldn't star automatically (${r.error}) — ${REPO}\n`);
+  } catch { /* never let the star prompt disrupt startup */ }
 }
