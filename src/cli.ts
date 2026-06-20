@@ -56,7 +56,7 @@ async function syncModelsToCodex(port?: number) {
   return result;
 }
 
-function handleStart() {
+async function handleStart() {
   const existingPid = readPid();
   if (existingPid) {
     console.error(`⚠️  Proxy already running (PID ${existingPid}). Use 'ocx stop' first.`);
@@ -76,9 +76,6 @@ function handleStart() {
   const server = startServer(port);
   writePid(process.pid);
 
-  void maybeShowStarPrompt(); // once-only [Y/n] GitHub-star prompt on first interactive start
-  syncModelsToCodex(port).catch(() => {});
-
   const shutdown = () => {
     console.log("\n🛑 Shutting down opencodex proxy...");
     server.stop(true);
@@ -91,6 +88,9 @@ function handleStart() {
 
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
+
+  await maybeShowStarPrompt(); // once-only [Y/n] GitHub-star prompt on first interactive start
+  await syncModelsToCodex(port).catch(() => {});
 }
 
 function killProxy(pid: number): void {
@@ -165,7 +165,7 @@ switch (command) {
     break;
   }
   case "start":
-    handleStart();
+    await handleStart();
     break;
   case "stop":
     handleStop();
@@ -202,7 +202,7 @@ switch (command) {
     const guiUrl = `http://localhost:${config.port}`;
     if (!cfg.readPid()) {
       console.log("Proxy not running. Starting...");
-      handleStart();
+      await handleStart();
       await new Promise(r => setTimeout(r, 1000));
     }
     console.log(`Opening ${guiUrl}`);

@@ -5,7 +5,7 @@ import { createInterface } from "node:readline/promises";
 import { getConfigDir } from "./config";
 
 const REPO = "lidge-jun/opencodex";
-/** Shared with scripts/postinstall.mjs so the prompt fires exactly once across install + first start. */
+/** Fires exactly once from the first interactive `ocx start`. */
 const MARKER = ".star-prompted";
 
 function ghAvailable(): boolean {
@@ -22,9 +22,10 @@ function starRepo(): { ok: boolean; error?: string } {
 }
 
 /**
- * First interactive `ocx start`: a one-time `[Y/n]` "star on GitHub?" prompt. On yes, stars the repo
- * via the user's `gh` auth (same approach as the npm postinstall). No-op under the background service,
- * for non-TTY/piped runs, when already prompted, or when `gh` is unavailable. Never throws.
+ * First interactive `ocx start`: a one-time `[Y/n]` "star on GitHub?" prompt.
+ * On yes, stars the repo via the user's `gh` auth. No-op under the background
+ * service, for non-TTY/piped runs, when already prompted, or when `gh` is
+ * unavailable. Never throws.
  */
 export async function maybeShowStarPrompt(): Promise<void> {
   try {
