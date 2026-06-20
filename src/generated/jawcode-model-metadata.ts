@@ -42,21 +42,21 @@ export function resolveJawcodeProvider(provider: string): string | undefined {
 export function getJawcodeModelMetadata(provider: string, modelId: string): JawcodeModelMetadata | undefined {
   const row = DATA[provider]?.find(r => r[0] === modelId);
   if (!row) return undefined;
-  const [id, contextWindow, maxTokens, input, reasoning, wireModelId] = row;
-  return {
-    provider, id,
-    ...(contextWindow !== undefined ? { contextWindow } : {}),
-    ...(maxTokens !== undefined ? { maxTokens } : {}),
-    ...(input ? { input: input.split(",") as ("text" | "image")[] } : {}),
-    ...(reasoning !== undefined ? { reasoning: reasoning === 1 } : {}),
-    ...(wireModelId !== undefined ? { wireModelId } : {}),
-  };
+  return rowToMetadata(provider, row);
 }
 
 export function getJawcodeModelMetadataCaseInsensitive(provider: string, modelId: string): JawcodeModelMetadata | undefined {
   const lower = modelId.toLowerCase();
   const row = DATA[provider]?.find(r => r[0].toLowerCase() === lower);
   if (!row) return undefined;
+  return rowToMetadata(provider, row);
+}
+
+export function listJawcodeModelMetadata(provider: string): JawcodeModelMetadata[] {
+  return (DATA[provider] ?? []).map(row => rowToMetadata(provider, row));
+}
+
+function rowToMetadata(provider: string, row: Row): JawcodeModelMetadata {
   const [id, contextWindow, maxTokens, input, reasoning, wireModelId] = row;
   return {
     provider, id,

@@ -6,7 +6,7 @@ import { CODEX_CONFIG_PATH, CODEX_MODELS_CACHE_PATH, DEFAULT_CATALOG_PATH, readR
 import { DEFAULT_MODEL_CACHE_TTL_MS, getFreshCached, getStaleCached, setCached } from "./model-cache";
 import { buildModelsRequest, resolveModelsAuthToken } from "./oauth/index";
 import type { OcxConfig, OcxProviderConfig } from "./types";
-import { getJawcodeModelMetadata, getJawcodeModelMetadataCaseInsensitive, resolveJawcodeProvider } from "./generated/jawcode-model-metadata";
+import { getJawcodeModelMetadata, getJawcodeModelMetadataCaseInsensitive, listJawcodeModelMetadata, resolveJawcodeProvider } from "./generated/jawcode-model-metadata";
 import { shouldCaseFoldMetadataModelId } from "./providers/derive";
 
 const OCX_DIR = join(homedir(), ".opencodex");
@@ -35,6 +35,7 @@ export function nativeOpenAiSlugs(): string[] {
 
 export interface CatalogModel { id: string; provider: string; owned_by?: string; }
 type RawEntry = Record<string, unknown>;
+const JAWCODE_CATALOG_AUGMENT_PROVIDERS = new Set(["opencode-go"]);
 
 /** Resolve the `model_catalog_json` path from Codex config.toml, else the default. */
 export function readCodexCatalogPath(): string {
@@ -297,9 +298,26 @@ export async function gatherRoutedModels(config: OcxConfig): Promise<CatalogMode
   const lists = await Promise.all(
     Object.entries(config.providers).map(([name, prov]) => fetchProviderModels(name, prov, ttlMs)),
   );
-  const all = lists.flat();
+  const all = augmentRoutedModelsWithJawcodeMetadata(lists.flat(), Object.keys(config.providers));
   all.sort((a, b) => (a.provider === b.provider ? a.id.localeCompare(b.id) : a.provider.localeCompare(b.provider)));
   return all;
+}
+
+export function augmentRoutedModelsWithJawcodeMetadata(models: CatalogModel[], providerNames: string[]): CatalogModel[] {
+  const out = [...models];
+  const seen = new Set(out.map(m => `${m.provider}/${m.id}`));
+  for (const provider of providerNames) {
+    if (!JAWCODE_CATALOG_AUGMENT_PROVIDERS.has(provider)) continue;
+    const jawcodeProvider = resolveJawcodeProvider(provider);
+    if (!jawcodeProvider) continue;
+    for (const meta of listJawcodeModelMetadata(jawcodeProvider)) {
+      const key = `${provider}/${meta.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ provider, id: meta.id, owned_by: provider });
+    }
+  }
+  return out;
 }
 
 /**

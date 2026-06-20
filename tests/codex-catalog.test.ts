@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildCatalogEntries, normalizeRoutedCatalogEntry } from "../src/codex-catalog";
+import { augmentRoutedModelsWithJawcodeMetadata, buildCatalogEntries, normalizeRoutedCatalogEntry } from "../src/codex-catalog";
 import { getJawcodeModelMetadata, resolveJawcodeProvider } from "../src/generated/jawcode-model-metadata";
 
 function nativeTemplate(): Record<string, unknown> {
@@ -160,6 +160,19 @@ describe("Codex catalog routed normalization", () => {
       expect(routed?.input_modalities).toEqual(item.input);
       expect(getJawcodeModelMetadata("opencode-go", item.id)?.contextWindow).toBe(item.context);
     }
+  });
+
+  test("opencode-go catalog sync appends official rows missing from /v1/models", () => {
+    const models = augmentRoutedModelsWithJawcodeMetadata(
+      [{ provider: "opencode-go", id: "glm-5.2" }],
+      ["opencode-go"],
+    );
+    const slugs = new Set(models.map(m => `${m.provider}/${m.id}`));
+
+    expect(slugs.has("opencode-go/glm-5.2")).toBe(true);
+    expect(slugs.has("opencode-go/qwen3.5-plus")).toBe(true);
+    expect(slugs.has("opencode-go/hy3-preview")).toBe(true);
+    expect(models.filter(m => `${m.provider}/${m.id}` === "opencode-go/glm-5.2")).toHaveLength(1);
   });
 
   test("anthropic sonnet 4.6 uses the 200k opencodex catalog cap", () => {

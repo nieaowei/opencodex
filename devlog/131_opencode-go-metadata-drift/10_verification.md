@@ -61,6 +61,8 @@ Existing jawcode dirty files were preserved and not staged:
 Modified:
 
 - `/Users/jun/Developer/new/700_projects/opencodex/src/generated/jawcode-model-metadata.ts`
+- `/Users/jun/Developer/new/700_projects/opencodex/scripts/generate-jawcode-metadata.ts`
+- `/Users/jun/Developer/new/700_projects/opencodex/src/codex-catalog.ts`
 - `/Users/jun/Developer/new/700_projects/opencodex/tests/codex-catalog.test.ts`
 - `/Users/jun/Developer/new/700_projects/opencodex/devlog/131_opencode-go-metadata-drift/10_verification.md`
 
@@ -70,9 +72,33 @@ Verification:
   `/Users/jun/Developer/new/700_projects/jawcode/packages/ai/src/models.json`.
 - `bun test tests/codex-catalog.test.ts` passed: 12 tests, 0 failures, 90 assertions.
 - `bun test tests/provider-registry-parity.test.ts` passed: 8 tests, 0 failures, 23 assertions.
-- `bun test tests` passed: 64 tests, 0 failures, 230 assertions.
+- `bun test tests` passed: 65 tests, 0 failures, 234 assertions.
 - `bun x tsc --noEmit` passed.
 - Generated metadata 20-row comparison for `opencode-go` returned `bad=0`.
+
+Real `ocx` verification found one extra runtime gap after the first commit:
+
+- `ocx` is correctly symlinked to the local repository:
+  `/Users/jun/.local/bin/ocx` -> `/Users/jun/Developer/new/700_projects/opencodex/dist/bin/ocx`
+  -> `/Users/jun/Developer/new/700_projects/opencodex/src/cli.ts`.
+- `ocx sync` originally still omitted official rows absent from the live provider `/v1/models`
+  response unless they were manually configured.
+- The runtime catalog path now augments configured `opencode-go` with generated jawcode metadata
+  rows before disabled-model filtering.
+- Current user config intentionally disables `opencode-go/qwen3.5-plus` and
+  `opencode-go/hy3-preview`, so they remain absent from the live catalog by configuration.
+
+Post-patch local `ocx` smoke:
+
+- `ocx stop; ocx start` started the proxy on `http://localhost:10100`.
+- `GET /healthz` returned status `ok`.
+- `GET /v1/models?client_version=0.141.0` returned HTTP 200.
+- `opencode-go/glm-5.2` returned `context_window=1000000`,
+  `auto_compact_token_limit=900000`, `input_modalities=["text"]`, `supports_websockets=true`.
+- `opencode-go/kimi-k2.7-code` returned `context_window=262144`,
+  `auto_compact_token_limit=235929`, `input_modalities=["text","image"]`, `supports_websockets=true`.
+- `opencode-go/minimax-m3` returned `context_window=512000`,
+  `auto_compact_token_limit=460800`, `input_modalities=["text","image"]`, `supports_websockets=true`.
 
 The catalog regression test now locks high-risk OpenCode Go rows through the full opencodex path:
 
