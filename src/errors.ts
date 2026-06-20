@@ -17,7 +17,6 @@ export function classifyError(status: number, type: string, message: string): Oc
   }
   if (
     text.includes("insufficient_quota") ||
-    text.includes("quota exceeded") ||
     text.includes("exceeded your current quota")
   ) {
     return { message, type: "insufficient_quota", code: "insufficient_quota" };
@@ -27,6 +26,16 @@ export function classifyError(status: number, type: string, message: string): Oc
   }
   if (status === 401 || status === 403 || type === "authentication_error") {
     return { message, type: "authentication_error", code: "invalid_api_key" };
+  }
+  if (
+    status === 503 ||
+    text.includes("overloaded") ||
+    text.includes("server is busy") ||
+    text.includes("temporarily unavailable")
+  ) {
+    // Codex recognizes "server_is_overloaded" and applies retry-after backoff
+    // (responses.rs is_server_overloaded_error); generic "upstream_server_error" is not recognized.
+    return { message, type: "server_error", code: "server_is_overloaded" };
   }
   if (status >= 500) {
     return { message, type: "server_error", code: "upstream_server_error" };

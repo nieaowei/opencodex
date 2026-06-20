@@ -95,3 +95,27 @@ describe("error fidelity", () => {
     expect(sanitized.get("content-type")).toBe("application/json");
   });
 });
+
+describe("overload and transient-429 classification (F3)", () => {
+  test("503 / overloaded maps to the Codex-recognized server_is_overloaded", () => {
+    expect(classifyError(503, "upstream_error", "The server is overloaded")).toMatchObject({
+      type: "server_error",
+      code: "server_is_overloaded",
+    });
+    expect(classifyError(500, "upstream_error", "model is currently overloaded")).toMatchObject({
+      code: "server_is_overloaded",
+    });
+  });
+
+  test("transient 429 quota bucket stays retryable (rate_limit_exceeded), delay text preserved", () => {
+    const r = classifyError(429, "upstream_error", "You have exceeded your quota for requests per min. Please try again in 5s");
+    expect(r.code).toBe("rate_limit_exceeded");
+    expect(r.message).toContain("try again in 5s");
+  });
+
+  test("real exhaustion still maps to fatal insufficient_quota", () => {
+    expect(classifyError(402, "upstream_error", "You exceeded your current quota")).toMatchObject({
+      code: "insufficient_quota",
+    });
+  });
+});
