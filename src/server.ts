@@ -530,6 +530,15 @@ async function handleManagementAPI(req: Request, url: URL, config: OcxConfig): P
     return jsonResponse({ success: true });
   }
 
+  if (url.pathname === "/api/stop" && req.method === "POST") {
+    const { restoreNativeCodex } = await import("./codex-inject");
+    const { stopServiceIfInstalled } = await import("./service");
+    stopServiceIfInstalled();
+    restoreNativeCodex();
+    setTimeout(() => process.exit(0), 200);
+    return jsonResponse({ success: true, message: "Proxy stopping, native Codex restored." });
+  }
+
   return null;
 }
 

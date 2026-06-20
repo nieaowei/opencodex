@@ -36,6 +36,9 @@ export const zh: Record<TKey, string> = {
   "dash.noModels": "未找到模型。请检查提供方 API 密钥。",
   "dash.cannotConnect": "无法连接到代理。它在运行吗？",
   "dash.runStart": "运行 {cmd} 以启动代理。",
+  "dash.stop": "停止代理",
+  "dash.stopConfirm": "停止代理并恢复原生 Codex 配置？",
+  "dash.stopping": "正在停止…",
 
   // providers
   "prov.subtitle": "配置 opencodex 路由到 Codex 的上游提供方。使用账户登录、添加提供方，或编辑原始配置。",

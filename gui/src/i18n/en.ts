@@ -36,6 +36,9 @@ export const en = {
   "dash.noModels": "No models found. Check provider API keys.",
   "dash.cannotConnect": "Cannot connect to proxy. Is it running?",
   "dash.runStart": "Run {cmd} to start the proxy.",
+  "dash.stop": "Stop Proxy",
+  "dash.stopConfirm": "Stop the proxy and restore native Codex?",
+  "dash.stopping": "Stopping…",
 
   // providers
   "prov.subtitle": "Configure the upstream providers opencodex routes into Codex. Log in with an account, add a provider, or edit the raw config.",

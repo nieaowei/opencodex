@@ -72,6 +72,7 @@ powershell -c "irm bun.sh/install.ps1 | iex"
 - **Sidecar 能力加持。** 非 OpenAI 模型也能拥有真正的**网页搜索**和**图片理解**——通过你的 ChatGPT 登录借用一个 `gpt-5.4-mini` 来实现。
 - **Web 仪表盘。** 管理 provider、OAuth 登录、模型选择、请求日志，都在浏览器里完成。
 - **HTTP/SSE 为默认，WebSocket 按需开启。** 只有显式设置 `"websockets": true` 时，代理才会广告 `supports_websockets`。
+- **干净退出，零残留。** `ocx stop`（或仪表盘的 Stop 按钮）会关闭代理、停止后台服务（如果有的话）、并将 Codex 恢复为原始配置。之后 `codex` 命令就像从未安装过 opencodex 一样正常工作。
 
 ## 添加 Provider
 

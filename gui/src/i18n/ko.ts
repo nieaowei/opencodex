@@ -36,6 +36,9 @@ export const ko: Record<TKey, string> = {
   "dash.noModels": "모델을 찾을 수 없습니다. 프로바이더 API 키를 확인하세요.",
   "dash.cannotConnect": "프록시에 연결할 수 없습니다. 실행 중인가요?",
   "dash.runStart": "{cmd} 를 실행해 프록시를 시작하세요.",
+  "dash.stop": "프록시 중지",
+  "dash.stopConfirm": "프록시를 중지하고 Codex 원본 설정을 복원할까요?",
+  "dash.stopping": "중지 중…",
 
   // providers
   "prov.subtitle": "opencodex가 Codex로 라우팅하는 업스트림 프로바이더를 설정합니다. 계정으로 로그인하거나, 프로바이더를 추가하거나, 원본 설정을 편집하세요.",

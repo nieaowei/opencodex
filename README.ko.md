@@ -101,6 +101,7 @@ codex -m "xai/grok-4"                  "이 PR을 리뷰해 줘"
 - **기본은 HTTP/SSE, WebSocket은 opt-in.** 프록시에 Responses WebSocket 엔드포인트가 있지만, `"websockets": true`로 설정할 때만 `supports_websockets`를 광고합니다.
 - **Sidecar로 기능 확장.** OpenAI가 아닌 모델에서도 ChatGPT 로그인을 통한 `gpt-5.4-mini`로 실제 **웹 검색**과 **이미지 이해** 기능을 사용할 수 있습니다.
 - **웹 대시보드** 하나로 프로바이더 관리, OAuth 로그인, 모델 선택, 요청 로그 확인까지 가능합니다.
+- **깔끔한 종료, 잔여물 제로.** `ocx stop`(또는 대시보드의 Stop 버튼)을 누르면 프록시가 종료되고, 백그라운드 서비스가 설치돼 있으면 함께 내려가며, Codex 설정이 원본으로 복원됩니다. 이후 `codex` 명령은 opencodex 없이 원래대로 동작합니다.
 
 ## 프로바이더 및 adapter
 
