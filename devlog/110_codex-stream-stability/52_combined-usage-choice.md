@@ -57,9 +57,11 @@ F2a — record usage but do **not** `continue`; fall through to choices parsing 
 +            }
 ```
 
-> The existing `const choices = chunk.choices …; if (!choices || choices.length === 0) continue;`
-> guard immediately below already no-ops a usage-only chunk (no `choices`), so removing the
-> early `continue` is safe.
+> **Why removing `continue` is safe (do not skip this):** the line immediately below is
+> `const choices = chunk.choices …; if (!choices || choices.length === 0) continue;`. A
+> usage-only chunk has no `choices`, so that guard already no-ops it. Removing the early
+> `continue` therefore only changes behavior for the usage+content chunk — the case we are
+> fixing — and is a no-op for every other chunk.
 
 F2b — carry `pendingUsage` on the post-loop terminal (current line 239):
 
@@ -78,7 +80,8 @@ F2b — carry `pendingUsage` on the post-loop terminal (current line 239):
 ```
 
 Replace the inline `done` with a `pendingUsage` accumulator and emit a single post-loop `done`.
-Declare `pendingUsage` with the other loop locals (near `let buffer = ""`):
+Declare `pendingUsage` immediately after `let buffer = "";` (`src/adapters/google.ts:126`, with
+the `reader`/`decoder`/`buffer` loop locals at `:124-126`):
 
 ```diff
        let buffer = "";

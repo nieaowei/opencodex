@@ -59,6 +59,7 @@ Complete content:
 import type { ServerWebSocket } from "bun";
 
 export interface WsData {
+  headers?: Headers;           // inbound upgrade headers, captured at upgrade and threaded to the pipeline
   abort?: () => void;          // set per-turn so close() can abort the upstream (RC2 parity)
 }
 
@@ -116,11 +117,14 @@ type CoreResult =
 async function handleResponsesCore(
   body: unknown, headers: Headers, config: OcxConfig, logCtx: { model: string; provider: string },
 ): Promise<CoreResult> {
-  // ... the current handleResponses body (parse/route/oauth/vision/web-search/adapter/bridge),
-  // but: the routed-stream branch returns { kind: "stream", stream: sseStream, onAbort: () => upstream.abort() };
-  //      the passthrough branch returns { kind: "passthrough", response, onAbort: () => upstream.abort() };
-  //      the non-stream branch returns { kind: "json", json: buildResponseJSON(...) };
-  //      error sites return { kind: "error", status, type, message }.
+  // The current handleResponses body moves here verbatim (parse/route/oauth/vision/web-search/
+  // adapter/bridge), with each `return` rewritten 1:1 by current line:
+  //   :141-161 passthrough     →  return { kind: "passthrough", response: <the Response>, onAbort: () => upstream.abort() };
+  //   :202-222 routed stream   →  return { kind: "stream", stream: sseStream, onAbort: () => upstream.abort() };
+  //   :223+    non-stream      →  return { kind: "json", json: buildResponseJSON(eventStream, parsed.modelId) };
+  //   every formatErrorResponse(status,type,msg) site  →  return { kind: "error", status, type, message: msg };
+  // `req.headers` usages become the `headers` param. The web-search branch (:168-178) returns a
+  // Response today; wrap its result as { kind: "passthrough", response, onAbort } so WS gets it too.
 }
 
 // HTTP keeps today's behavior:
@@ -152,7 +156,8 @@ async function handleResponses(req: Request, config: OcxConfig, logCtx: { model:
 @@
 +      // Responses WebSocket (phase 120). Codex upgrades the same /v1/responses path (01_§2).
 +      if (url.pathname === "/v1/responses" && req.headers.get("upgrade")?.toLowerCase() === "websocket") {
-+        if (server.upgrade<WsData>(req, { data: {} })) return undefined as unknown as Response;
++        // Capture inbound headers at upgrade (auth is handshake-time only on the WS path, 01_§3).
++        if (server.upgrade<WsData>(req, { data: { headers: req.headers } })) return undefined as unknown as Response;
 +        return formatErrorResponse(426, "upgrade_required", "WebSocket upgrade failed");
 +      }
 @@
@@ -167,7 +172,7 @@ async function handleResponses(req: Request, config: OcxConfig, logCtx: { model:
 +        if (frame.type !== "response.create") return;
 +        const { type: _t, ...payload } = frame;          // payload == Responses request body
 +        const logCtx = { model: "unknown", provider: "unknown" };
-+        const r = await handleResponsesCore(payload, new Headers(), config, logCtx);
++        const r = await handleResponsesCore(payload, ws.data.headers ?? new Headers(), config, logCtx);
 +        if (r.kind === "error") {
 +          ws.send(JSON.stringify({ type: "response.failed", response: { status: "failed", error: { message: r.message, type: r.type, code: null } } }));
 +          return;
@@ -182,10 +187,12 @@ async function handleResponses(req: Request, config: OcxConfig, logCtx: { model:
    });
 ```
 
-> Auth at upgrade time (`01_§3`): the WS `message` handler passes `new Headers()` in the MVP
-> because routed providers authenticate via the configured `apiKey`/OAuth inside the pipeline,
-> not the inbound request headers. If a provider needs an inbound header (rare), capture it in
-> the `fetch` upgrade `data` and thread it through — noted for `11_`/`12_`.
+> **Auth (`01_§3`):** WS auth is handshake-time only — there is no per-frame token. The upgrade
+> captures `req.headers` into `ws.data.headers`, and the message handler threads them into
+> `handleResponsesCore` (exactly as the HTTP path passes `req.headers`). In practice routed
+> providers authenticate via the configured `apiKey`/OAuth **inside** the pipeline, so inbound
+> headers are usually unused; capturing them keeps parity with HTTP and covers the rare provider
+> that reads an inbound header. Native end-to-end upstream auth is `11_`.
 
 ### NEW
 

@@ -68,8 +68,9 @@ F3c — drop the over-broad `"quota exceeded"` so transient 429 buckets stay ret
    }
 ```
 
-F3a — add an overload branch mapping to a Codex-recognized code, **after** the auth branch and
-**before** the generic `status >= 500` branch (current line 30→31):
+F3a — add an overload branch mapping to a Codex-recognized code. Insert it **between line 30**
+(the auth branch's closing `}`, `errors.ts:28-30`) **and line 31** (the `if (status >= 500)`
+check) — so 401/403 auth is matched first, then overload, then the generic 5xx fallback:
 
 ```diff
    if (status === 401 || status === 403 || type === "authentication_error") {
