@@ -10,6 +10,10 @@ const PROVIDER_ALIASES = {
   kimi: "moonshot",
   openrouter: "openrouter",
   "opencode-go": "opencode-go",
+  // minimax / minimax-cn share the same model lineup; map both to jawcode's `minimax` bundle so the
+  // opencodex catalog providers get bundled metadata (was a metadata-coverage gap → drift bug).
+  minimax: "minimax",
+  "minimax-cn": "minimax",
 } as const;
 
 type RawModel = {

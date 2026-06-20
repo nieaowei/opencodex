@@ -72,6 +72,9 @@ export const KEY_LOGIN_PROVIDERS: Record<string, KeyLoginProvider> = {
   "minimax-cn": { label: "MiniMax (CN)", baseUrl: "https://api.minimaxi.com/v1", adapter: "openai-chat", dashboardUrl: "https://platform.minimaxi.com", defaultModel: "MiniMax-M2.5" },
   "kimi-code": { label: "Kimi (coding)", baseUrl: "https://api.kimi.com/coding/v1", adapter: "openai-chat", dashboardUrl: "https://platform.moonshot.cn/console/api-keys", defaultModel: "kimi-k2.5" },
   "opencode-zen": { label: "opencode zen", baseUrl: "https://opencode.ai/zen/v1", adapter: "openai-chat", dashboardUrl: "https://opencode.ai/auth" },
+  // opencode go — routed multi-model endpoint (GLM/DeepSeek/Kimi/Qwen/MiMo). Mirrors the GUI preset in
+  // AddProviderModal.tsx so `ocx init` (CLI) reaches the documented GUI parity (was GUI-only → drift bug).
+  "opencode-go": { label: "opencode go", baseUrl: "https://opencode.ai/zen/go/v1", adapter: "openai-chat", dashboardUrl: "https://opencode.ai/auth", defaultModel: "kimi-k2.6" },
   "vercel-ai-gateway": { label: "Vercel AI Gateway", baseUrl: "https://ai-gateway.vercel.sh/v1", adapter: "openai-chat", dashboardUrl: "https://vercel.com/dashboard" },
   // Xiaomi MiMo exposes an Anthropic-compatible endpoint → anthropic adapter (x-api-key).
   xiaomi: { label: "Xiaomi MiMo", baseUrl: "https://api.xiaomimimo.com/anthropic", adapter: "anthropic", dashboardUrl: "https://xiaomimimo.com", defaultModel: "mimo-v2.5-pro" },
