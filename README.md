@@ -1,3 +1,10 @@
+```
+make codex open!
+npm install -g @bitkyc08/opencodex
+ocx start
+localhost:10100
+```
+
 <p align="center">
   <img src="assets/banner.png" alt="opencodex — Universal provider proxy for Codex, use any LLM" width="820">
 </p>
