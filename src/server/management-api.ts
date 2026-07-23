@@ -666,13 +666,19 @@ export async function handleManagementAPI(req: Request, url: URL, config: OcxCon
      touched = true;
    }
 
-   if (Object.hasOwn(rawBody, "allowPrivateNetwork")) {
-     if (typeof rawBody.allowPrivateNetwork !== "boolean") return jsonResponse({ error: "allowPrivateNetwork must be a boolean" }, 400);
-     next.allowPrivateNetwork = rawBody.allowPrivateNetwork;
+  if (Object.hasOwn(rawBody, "allowPrivateNetwork")) {
+    if (typeof rawBody.allowPrivateNetwork !== "boolean") return jsonResponse({ error: "allowPrivateNetwork must be a boolean" }, 400);
+    next.allowPrivateNetwork = rawBody.allowPrivateNetwork;
+    touched = true;
+  }
+
+   if (Object.hasOwn(rawBody, "liveModels")) {
+     if (typeof rawBody.liveModels !== "boolean") return jsonResponse({ error: "liveModels must be a boolean" }, 400);
+     next.liveModels = rawBody.liveModels;
      touched = true;
    }
 
-    if (!touched) return jsonResponse({ error: "no recognized fields to update" }, 400);
+   if (!touched) return jsonResponse({ error: "no recognized fields to update" }, 400);
 
     // A disabled-only toggle preserves the v2 fast lane: it changes routing eligibility,
     // not the provider shape, so the merged-shape validators (canonical-seed guard for

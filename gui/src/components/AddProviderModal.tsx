@@ -51,7 +51,7 @@ export default function AddProviderModal({
   );
   const [form, setForm] = useState<FormState | null>(
     initialCustom
-      ? { name: "", adapter: "openai-chat", baseUrl: "", authMode: "key", apiKey: "", defaultModel: "", allowPrivateNetwork: false }
+      ? { name: "", adapter: "openai-chat", baseUrl: "", authMode: "key", apiKey: "", defaultModel: "", allowPrivateNetwork: false, liveModels: true }
       : null,
   );
   const [saving, setSaving] = useState(false);
@@ -145,6 +145,7 @@ export default function AddProviderModal({
       apiKey: "",
       defaultModel: p.defaultModel ?? "",
       allowPrivateNetwork: false,
+      liveModels: true,
     });
     setError("");
     setOauthMsg("");
@@ -483,6 +484,15 @@ export default function AddProviderModal({
                 )}
                 {!isReservedForward && (form?.allowPrivateNetwork ?? false) && (
                   <p className="muted text-hint">{t("modal.allowPrivateNetworkHint")}</p>
+                )}
+                {!isReservedForward && (
+                  <label className="modal-field" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <input type="checkbox" checked={form?.liveModels ?? true} onChange={e => setForm(f => f ? { ...f, liveModels: e.target.checked } : f)} />
+                    <span className="muted text-control">{t("modal.liveModels")}</span>
+                  </label>
+                )}
+                {!isReservedForward && !(form?.liveModels ?? true) && (
+                  <p className="muted text-hint">{t("modal.liveModelsHint")}</p>
                 )}
               </>}
               {form.authMode === "forward" ? (
