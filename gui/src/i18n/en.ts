@@ -303,6 +303,7 @@ export const en = {
   "models.loadFail": "Failed to load models — is the proxy running?",
   "models.noRouted": "No routed models",
   "models.noRoutedHint": "Log into a provider or add one first.",
+  "models.noModels": "No models discovered. Add custom models or enable live model discovery for this provider.",
   "models.loading": "Loading…",
   "models.search": "Search models…",
   "models.showMore": "Show {n} more",

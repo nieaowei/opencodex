@@ -298,6 +298,7 @@ export const zh: Record<TKey, string> = {
   "models.loadFail": "加载模型失败 — 代理在运行吗？",
   "models.noRouted": "没有已路由的模型",
   "models.noRoutedHint": "请先登录提供方或添加一个。",
+  "models.noModels": "未发现模型。请添加自定义模型或为该提供商启用实时模型发现。",
   "models.loading": "加载中…",
   "models.search": "搜索模型…",
   "models.showMore": "再显示 {n} 个",

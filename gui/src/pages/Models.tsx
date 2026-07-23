@@ -27,6 +27,11 @@ interface ProviderContextCapsResponse {
   caps?: Record<string, number>;
 }
 
+interface ProviderInfo {
+  name: string;
+  disabled: boolean;
+}
+
 interface V2Status {
   enabled: boolean;
   agentsMaxThreadsConflict: boolean;
@@ -73,6 +78,7 @@ function activeModelOptions(models: ModelRow[], disabled: Set<string>): { value:
 export default function Models({ apiBase }: { apiBase: string }) {
   const t: TFn = useT();
   const [models, setModels] = useState<ModelRow[]>([]);
+  const [configuredProviders, setConfiguredProviders] = useState<ProviderInfo[]>([]);
   const [disabled, setDisabled] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState<Record<string, string>>({});
   const [limit, setLimit] = useState<Record<string, number>>({});
@@ -181,6 +187,14 @@ export default function Models({ apiBase }: { apiBase: string }) {
         fetch(`${apiBase}/api/models`).then(r => r.json()) as Promise<ModelRow[]>,
         fetch(`${apiBase}/api/provider-context-caps`).then(r => r.json()) as Promise<ProviderContextCapsResponse>,
       ]);
+      // Best-effort: providers list lets the page show empty groups for providers
+      // whose model discovery returned nothing (e.g. liveModels:false with no static models).
+      let providers: ProviderInfo[] = [];
+      try {
+        const pRes = await fetch(`${apiBase}/api/providers`);
+        if (pRes.ok) providers = await pRes.json() as ProviderInfo[];
+      } catch { /* old server: keep groups purely model-driven */ }
+      setConfiguredProviders(providers);
       void loadV2(); // best-effort, independent of the models fetch
       void loadShadowCall();
       setModels(data);
@@ -217,6 +231,12 @@ export default function Models({ apiBase }: { apiBase: string }) {
   const groups = useMemo(() => {
     const g: Record<string, ModelRow[]> = {};
     for (const m of models) (g[m.provider] ??= []).push(m);
+    // Surface configured providers that have zero discovered models as empty groups
+    // (e.g. liveModels:false with no static list). The canonical openai forward provider
+    // is excluded - it always has native rows.
+    for (const p of configuredProviders) {
+      if (!p.disabled && !g[p.name]) g[p.name] = [];
+    }
     // The single native `openai` group pins first. Its credential policy comes from
     // the Providers-page Pool/Direct option and never changes model identity here.
     return Object.entries(g).sort(([a, rowsA], [b, rowsB]) => {
@@ -225,7 +245,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
       if (nativeA !== nativeB) return nativeA ? -1 : 1;
       return a.localeCompare(b);
     });
-  }, [models]);
+  }, [models, configuredProviders]);
 
   const apply = async (next: Set<string>) => {
     setBusy(true);
@@ -734,7 +754,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
        const isCollapsed = collapsed.has(provider);
        const activeCount = rows.filter(m => !disabled.has(m.namespaced)).length;
        const capOn = contextCaps[provider] === contextCapValue;
-       const isNative = rows.every(m => m.native);
+       const isNative = rows.length > 0 && rows.every(m => m.native);
        const q = (search[provider] ?? "").trim().toLowerCase();
        const filtered = q ? rows.filter(m => m.id.toLowerCase().includes(q)) : rows;
        // Display-only: enabled models float to the top of each provider group so they
@@ -745,8 +765,9 @@ export default function Models({ apiBase }: { apiBase: string }) {
        const shown = limit[provider] ?? PAGE;
        const visible = sorted.slice(0, shown);
        const remaining = filtered.length - visible.length;
-        const allOn = rows.every(m => !disabled.has(m.namespaced));
-        const allOff = rows.every(m => disabled.has(m.namespaced));
+       const hasRows = rows.length > 0;
+       const allOn = hasRows && rows.every(m => !disabled.has(m.namespaced));
+       const allOff = hasRows && rows.every(m => disabled.has(m.namespaced));
         const bulkToggle = (enable: boolean) => {
           const next = new Set(disabled);
           for (const m of rows) { if (enable) next.delete(m.namespaced); else next.add(m.namespaced); }
@@ -804,9 +825,12 @@ export default function Models({ apiBase }: { apiBase: string }) {
                    onChange={e => setSearch(prev => ({ ...prev, [provider]: e.target.value }))}
                    aria-label={t("models.search")}
                  />
-               )}
-                {visible.map(m => {
-                  const off = disabled.has(m.namespaced);
+              )}
+              {visible.length === 0 && (
+                <p className="muted text-label" style={{ padding: "8px 0" }}>{t("models.noModels")}</p>
+              )}
+              {visible.map(m => {
+                const off = disabled.has(m.namespaced);
                   return (
                     <div
                       key={m.namespaced}

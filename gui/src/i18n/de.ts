@@ -290,6 +290,7 @@ export const de = {
   "models.loadFail": "Modelle konnten nicht geladen werden — läuft der Proxy?",
   "models.noRouted": "Keine gerouteten Modelle",
   "models.noRoutedHint": "Melde dich zuerst bei einem Anbieter an oder füge einen hinzu.",
+  "models.noModels": "Keine Modelle gefunden. Füge benutzerdefinierte Modelle hinzu oder aktiviere die Live-Modellerkennung für diesen Anbieter.",
   "models.loading": "Lädt…",
   "models.search": "Modelle suchen…",
   "models.showMore": "{n} weitere anzeigen",

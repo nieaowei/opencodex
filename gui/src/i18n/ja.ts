@@ -268,6 +268,7 @@ export const ja: Record<TKey, string> = {
   "models.loadFail": "モデルの読み込みに失敗しました — プロキシは起動していますか?",
   "models.noRouted": "ルーティングモデルがありません",
   "models.noRoutedHint": "まずプロバイダーにログインするか追加してください。",
+  "models.noModels": "モデルが見つかりません。カスタムモデルを追加するか、このプロバイダーのライブモデル検出を有効にしてください。",
   "models.loading": "読み込み中…",
   "models.search": "モデルを検索…",
   "models.showMore": "さらに {n} 件表示",

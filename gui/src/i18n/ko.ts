@@ -298,6 +298,7 @@ export const ko: Record<TKey, string> = {
   "models.loadFail": "모델을 불러오지 못했습니다 — 프록시가 실행 중인가요?",
   "models.noRouted": "라우팅된 모델 없음",
   "models.noRoutedHint": "먼저 프로바이더에 로그인하거나 추가하세요.",
+  "models.noModels": "모델이 없습니다. 사용자 정의 모델을 추가하거나 이 프로바이더의 라이브 모델 검색을 활성화하세요.",
   "models.loading": "불러오는 중…",
   "models.search": "모델 검색…",
   "models.showMore": "{n}개 더 보기",
