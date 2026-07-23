@@ -2,7 +2,7 @@ import type { ProviderAdapter } from "./base";
 import type { OcxParsedRequest, OcxProviderConfig } from "../types";
 import { createResponsesPassthroughAdapter } from "./openai-responses";
 
-export function createAzureAdapter(provider: OcxProviderConfig): ProviderAdapter & { passthrough: true } {
+export function createAzureAdapter(provider: OcxProviderConfig): ProviderAdapter {
   const inner = createResponsesPassthroughAdapter({
     ...provider,
     baseUrl: provider.baseUrl,

@@ -1,5 +1,5 @@
 import type { IncomingMeta, ProviderAdapter } from "./base";
-import type { AdapterEvent, OcxParsedRequest, OcxProviderConfig } from "../types";
+import type { AdapterEvent, OcxParsedRequest, OcxProviderConfig, OcxUsage } from "../types";
 import { decodeCompactionSummary, SUMMARY_PREFIX } from "../responses/compaction";
 import { OCX_REASONING_PREFIX } from "../responses/reasoning-envelope";
 
@@ -270,6 +270,22 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === "object" && !Array.isArray(v);
 }
 
+function usageFromOpenAIResponses(usage: unknown): OcxUsage | undefined {
+  if (!isPlainObject(usage)) return undefined;
+  const inputTokens = typeof usage.input_tokens === "number" ? usage.input_tokens : 0;
+  const outputTokens = typeof usage.output_tokens === "number" ? usage.output_tokens : 0;
+  const inputDetails = isPlainObject(usage.input_tokens_details) ? usage.input_tokens_details : {};
+  const outputDetails = isPlainObject(usage.output_tokens_details) ? usage.output_tokens_details : {};
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens: typeof usage.total_tokens === "number" ? usage.total_tokens : inputTokens + outputTokens,
+    ...(typeof inputDetails.cached_tokens === "number" ? { cachedInputTokens: inputDetails.cached_tokens } : {}),
+    ...(typeof inputDetails.cache_write_tokens === "number" ? { cacheCreationInputTokens: inputDetails.cache_write_tokens } : {}),
+    ...(typeof outputDetails.reasoning_tokens === "number" ? { reasoningOutputTokens: outputDetails.reasoning_tokens } : {}),
+  };
+}
+
 /** Flatten a Responses tool-output `output` value (string or content-part array) to plain text. */
 function toolOutputText(output: unknown): string {
   if (typeof output === "string") return output;
@@ -410,10 +426,262 @@ function stripUnsupportedHostedTools(body: unknown): unknown {
   return tools.length === body.tools.length ? body : { ...body, tools };
 }
 
-export function createResponsesPassthroughAdapter(provider: OcxProviderConfig): ProviderAdapter & { passthrough: true } {
+interface OpenAIResponsesItem {
+  id?: string;
+  type?: string;
+  call_id?: string;
+  name?: string;
+  arguments?: string;
+  status?: string;
+  action?: { type?: string; query?: string; queries?: string[] };
+  content?: unknown[];
+  role?: string;
+}
+
+function webSearchQueries(item: OpenAIResponsesItem): string[] {
+  const action = isPlainObject(item.action) ? item.action : {};
+  if (Array.isArray(action.queries)) return action.queries.filter((q): q is string => typeof q === "string");
+  if (typeof action.query === "string") return [action.query];
+  return [];
+}
+
+function itemTextContent(item: OpenAIResponsesItem): string {
+  if (!Array.isArray(item.content)) return "";
+  return item.content.map(part => {
+    if (!isPlainObject(part)) return "";
+    if (typeof part.text === "string") return part.text;
+    return "";
+  }).filter(Boolean).join("");
+}
+
+async function* parseResponsesStream(response: Response): AsyncGenerator<AdapterEvent> {
+  if (!response.body) {
+    yield { type: "error", message: "No response body" };
+    return;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  let currentMessage = false;
+  let currentFunctionCall: { callId: string; name: string } | null = null;
+  let currentReasoning = false;
+  let currentWebSearch: { eventId: string; queries: string[] } | null = null;
+  let pendingUsage: OcxUsage | undefined;
+  let terminal = false;
+
+  const closeFunctionCall = function* (): Generator<AdapterEvent> {
+    if (!currentFunctionCall) return;
+    yield { type: "tool_call_end" };
+    currentFunctionCall = null;
+  };
+  const closeWebSearch = function* (status: "completed" | "failed"): Generator<AdapterEvent> {
+    if (!currentWebSearch) return;
+    yield { type: "web_search_call_end", id: currentWebSearch.eventId, queries: currentWebSearch.queries, status };
+    currentWebSearch = null;
+  };
+
+  const handleEvent = function* (event: string, data: Record<string, unknown>): Generator<AdapterEvent> {
+    switch (event) {
+      case "response.output_item.added": {
+        const item = (data.item ?? {}) as OpenAIResponsesItem;
+        if (item.type === "message" && item.role === "assistant") {
+          yield* closeFunctionCall();
+          currentReasoning = false;
+          yield* closeWebSearch("completed");
+          currentMessage = true;
+        } else if (item.type === "function_call") {
+          currentMessage = false;
+          currentReasoning = false;
+          yield* closeWebSearch("completed");
+          yield* closeFunctionCall();
+          const callId = typeof item.call_id === "string" ? item.call_id : String(item.id ?? "");
+          const name = typeof item.name === "string" ? item.name : "";
+          currentFunctionCall = { callId, name };
+          yield { type: "tool_call_start", id: callId || String(item.id ?? ""), name };
+        } else if (item.type === "reasoning") {
+          currentMessage = false;
+          yield* closeFunctionCall();
+          yield* closeWebSearch("completed");
+          currentReasoning = true;
+        } else if (item.type === "web_search_call") {
+          currentMessage = false;
+          currentReasoning = false;
+          yield* closeFunctionCall();
+          yield* closeWebSearch("completed");
+          const eventId = String(item.id ?? crypto.randomUUID());
+          currentWebSearch = { eventId, queries: [] };
+          yield { type: "web_search_call_begin", id: eventId };
+        }
+        break;
+      }
+      case "response.output_text.delta": {
+        if (typeof data.delta === "string" && data.delta.length > 0) {
+          yield { type: "text_delta", text: data.delta };
+        }
+        break;
+      }
+      case "response.reasoning_summary_text.delta":
+      case "response.reasoning_text.delta": {
+        if (typeof data.delta === "string" && data.delta.length > 0) {
+          yield { type: "reasoning_raw_delta", text: data.delta };
+        }
+        break;
+      }
+      case "response.function_call_arguments.delta": {
+        if (typeof data.delta === "string") {
+          yield { type: "tool_call_delta", arguments: data.delta };
+        }
+        break;
+      }
+      case "response.output_item.delta": {
+        const item = (data.item ?? {}) as OpenAIResponsesItem;
+        if (item.type === "web_search_call" && currentWebSearch) {
+          currentWebSearch.queries = webSearchQueries(item);
+        }
+        break;
+      }
+      case "response.output_item.done": {
+        const item = (data.item ?? {}) as OpenAIResponsesItem;
+        if (item.type === "function_call") {
+          yield* closeFunctionCall();
+        } else if (item.type === "message") {
+          currentMessage = false;
+        } else if (item.type === "reasoning") {
+          currentReasoning = false;
+        } else if (item.type === "web_search_call") {
+          if (currentWebSearch) currentWebSearch.queries = webSearchQueries(item);
+          yield* closeWebSearch(item.status === "failed" ? "failed" : "completed");
+        }
+        break;
+      }
+      case "response.completed": {
+        terminal = true;
+        yield { type: "done", usage: pendingUsage };
+        break;
+      }
+      case "response.incomplete": {
+        terminal = true;
+        const responseData = isPlainObject(data.response) ? data.response : {};
+        const details = isPlainObject(responseData.incomplete_details) ? responseData.incomplete_details : {};
+        yield { type: "done", usage: pendingUsage, stopReason: typeof details.reason === "string" ? details.reason : "incomplete" };
+        break;
+      }
+      case "response.failed": {
+        terminal = true;
+        const responseData = isPlainObject(data.response) ? data.response : {};
+        const error = isPlainObject(responseData.error) ? responseData.error : {};
+        yield { type: "error", message: typeof error.message === "string" ? error.message : "upstream error", usage: pendingUsage };
+        break;
+      }
+      case "response.usage": {
+        pendingUsage = usageFromOpenAIResponses(data.usage);
+        break;
+      }
+    }
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      let event = "";
+      for (const line of lines) {
+        if (line.startsWith("event: ")) {
+          event = line.slice(7).trim();
+        } else if (line.startsWith("data: ")) {
+          const payload = line.slice(6).trim();
+          if (payload === "[DONE]") {
+            if (!terminal) {
+              yield { type: "done", usage: pendingUsage };
+            }
+            return;
+          }
+          let data: Record<string, unknown>;
+          try {
+            data = JSON.parse(payload) as Record<string, unknown>;
+          } catch {
+            yield { type: "error", message: "malformed upstream SSE data frame" };
+            return;
+          }
+          yield* handleEvent(event, data);
+        } else if (line.trim() === "") {
+          event = "";
+        }
+      }
+    }
+
+    if (buffer.startsWith("data: ")) {
+      const payload = buffer.slice(6).trim();
+      let data: Record<string, unknown>;
+      try {
+        data = JSON.parse(payload) as Record<string, unknown>;
+      } catch {
+        yield { type: "error", message: "malformed upstream SSE data frame" };
+        return;
+      }
+      yield* handleEvent("", data);
+    }
+    yield* closeFunctionCall();
+    yield* closeWebSearch("failed");
+    if (!terminal) {
+      yield { type: "done", usage: pendingUsage };
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+async function parseResponsesJson(response: Response): Promise<AdapterEvent[]> {
+  let json: Record<string, unknown>;
+  try {
+    json = await response.json() as Record<string, unknown>;
+  } catch {
+    return [{ type: "error", message: "malformed upstream JSON response" }];
+  }
+
+  if (json.error) {
+    const error = isPlainObject(json.error) ? json.error : {};
+    return [{ type: "error", message: typeof error.message === "string" ? error.message : "upstream error" }];
+  }
+
+  const events: AdapterEvent[] = [];
+  const output = Array.isArray(json.output) ? json.output as OpenAIResponsesItem[] : [];
+
+  for (const item of output) {
+    if (!isPlainObject(item)) continue;
+    if (item.type === "message" && item.role === "assistant") {
+      const text = itemTextContent(item);
+      if (text) events.push({ type: "text_delta", text });
+    } else if (item.type === "function_call") {
+      const callId = typeof item.call_id === "string" ? item.call_id : String(item.id ?? "");
+      const name = typeof item.name === "string" ? item.name : "";
+      const args = typeof item.arguments === "string" ? item.arguments : "{}";
+      events.push({ type: "tool_call_start", id: callId || String(item.id ?? ""), name });
+      if (args && args !== "{}") events.push({ type: "tool_call_delta", arguments: args });
+      events.push({ type: "tool_call_end" });
+    } else if (item.type === "reasoning") {
+      const text = itemTextContent(item);
+      if (text) events.push({ type: "reasoning_raw_delta", text });
+    } else if (item.type === "web_search_call") {
+      const eventId = String(item.id ?? crypto.randomUUID());
+      events.push({ type: "web_search_call_begin", id: eventId });
+      events.push({ type: "web_search_call_end", id: eventId, queries: webSearchQueries(item), status: item.status === "failed" ? "failed" : "completed" });
+    }
+  }
+
+  events.push({ type: "done", usage: usageFromOpenAIResponses(json.usage), stopReason: json.status === "incomplete" ? "incomplete" : undefined });
+  return events;
+}
+
+export function createResponsesPassthroughAdapter(provider: OcxProviderConfig): ProviderAdapter {
   return {
     name: "openai-responses",
-    passthrough: true as const,
 
     buildRequest(parsed: OcxParsedRequest, incoming?: IncomingMeta) {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -462,8 +730,12 @@ export function createResponsesPassthroughAdapter(provider: OcxProviderConfig): 
       };
     },
 
-    async *parseStream(): AsyncGenerator<AdapterEvent> {
-      yield { type: "error", message: "passthrough adapter should not parse stream" };
+    async *parseStream(response: Response): AsyncGenerator<AdapterEvent> {
+      yield* parseResponsesStream(response);
+    },
+
+    async parseResponse(response: Response): Promise<AdapterEvent[]> {
+      return parseResponsesJson(response);
     },
   };
 }
